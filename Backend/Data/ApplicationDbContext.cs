@@ -22,6 +22,7 @@ namespace Backend.Data
         public DbSet<Message> Messages => Set<Message>();
         public DbSet<MessageRecipient> MessageRecipients => Set<MessageRecipient>();
         public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
+        public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
