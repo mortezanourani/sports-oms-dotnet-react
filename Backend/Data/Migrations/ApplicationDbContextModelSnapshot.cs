@@ -181,8 +181,9 @@ namespace Backend.Data.Migrations
                     b.HasIndex("CityId")
                         .HasDatabaseName("ix_athlete_counts_city_id");
 
-                    b.HasIndex("FederationId")
-                        .HasDatabaseName("ix_athlete_counts_federation_id");
+                    b.HasIndex("FederationId", "CityId", "Year", "Month", "Gender")
+                        .IsUnique()
+                        .HasDatabaseName("ix_athlete_counts_federation_id_city_id_year_month_gender");
 
                     b.ToTable("athlete_counts", (string)null);
                 });

@@ -43,6 +43,22 @@ namespace Backend.Services
             return querySet; // National — no restriction, includes champions with no city set
         }
 
+        public IQueryable<AthleteCount> FilterAthleteCounts(IQueryable<AthleteCount> querySet, ClaimsPrincipal user)
+        {
+            var scopeLevel = user.ScopeLevel();
+            if (scopeLevel == "City")
+            {
+                var cityId = user.ScopeCityId();
+                return querySet.Where(a => a.CityId == cityId);
+            }
+            if (scopeLevel == "Province")
+            {
+                var provinceId = user.ScopeProvinceId();
+                return querySet.Where(a => a.City.ProvinceId == provinceId);
+            }
+            return querySet; // National
+        }
+
         public async Task CheckCityAllowedAsync(ClaimsPrincipal user, Guid cityId)
         {
             var scopeLevel = user.ScopeLevel();
