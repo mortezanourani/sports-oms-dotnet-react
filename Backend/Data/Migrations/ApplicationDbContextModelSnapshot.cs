@@ -854,7 +854,7 @@ namespace Backend.Data.Migrations
                     b.HasOne("Backend.Models.Federation", "Federation")
                         .WithMany()
                         .HasForeignKey("FederationId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_athlete_counts_federations_federation_id");
 
@@ -935,7 +935,7 @@ namespace Backend.Data.Migrations
                     b.HasOne("Backend.Models.Federation", "Federation")
                         .WithMany("Positions")
                         .HasForeignKey("FederationId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_federation_positions_federations_federation_id");
 

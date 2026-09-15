@@ -71,6 +71,18 @@ namespace Backend.Data
                 .WithMany()
                 .HasForeignKey(a => a.CityId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<AthleteCount>()
+                .HasOne(a => a.Federation)
+                .WithMany()
+                .HasForeignKey(a => a.FederationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<FederationPosition>()
+                .HasOne(a => a.Federation)
+                .WithMany(f => f.Positions)
+                .HasForeignKey(a => a.FederationId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }
