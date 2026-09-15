@@ -34,8 +34,14 @@ namespace Backend.Controllers
                 .Include(f => f.City)
                     .ThenInclude(c => c.Province)
                 .AsQueryable();
+
             if (!string.IsNullOrEmpty(facilityType))
-                qs = qs.Where(f => f.FacilityType.ToString() == facilityType);
+            {
+                if (!Enum.TryParse<FacilityType>(facilityType, out var facilityTypeEnum))
+                    return BadRequest(new { detail = "نوع مکان نامعتبر است" });
+
+                qs = qs.Where(f => f.FacilityType == facilityTypeEnum);
+            }
 
             qs = _scope.FilterFacilities(qs, User);
 
