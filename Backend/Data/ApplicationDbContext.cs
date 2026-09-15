@@ -78,6 +78,10 @@ namespace Backend.Data
                 .HasForeignKey(a => a.FederationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            builder.Entity<AthleteCount>()
+                .HasIndex(a => new { a.FederationId, a.CityId, a.Year, a.Month, a.Gender })
+                .IsUnique();
+
             builder.Entity<FederationPosition>()
                 .HasOne(a => a.Federation)
                 .WithMany(f => f.Positions)
