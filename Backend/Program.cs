@@ -3,9 +3,12 @@ using Microsoft.EntityFrameworkCore;
 using Backend.Data;
 using Backend.Models;
 using Backend.Services;
+using Backend.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Security.Claims;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,6 +50,7 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddScoped<TokenService>();
+builder.Services.AddScoped<ScopeService>();
 
 builder.Services.AddControllers();
 
