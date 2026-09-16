@@ -1,9 +1,12 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Backend.Data;
+﻿using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
+using Backend.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Net.Mail;
+using System.Net.Mime;
 
 namespace Backend.Controllers
 {
@@ -13,9 +16,11 @@ namespace Backend.Controllers
     public class MessagesController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
-        public MessagesController(ApplicationDbContext db)
+        private readonly FileStorageService _fileStorage;
+        public MessagesController(ApplicationDbContext db, FileStorageService fileStorage)
         {
             _db = db;
+            _fileStorage = fileStorage;
         }
 
         // Small helper to get the logged-in user's own ID out of the JWT
@@ -126,6 +131,50 @@ namespace Backend.Controllers
                     r.RecipientId, $"{r.Recipient.FirstName} {r.Recipient.LastName}" ?? r.Recipient.UserName!, r.IsRead, r.ReadAt)).ToList(),
                 message.Attachments.Select(a => new MessageAttachmentOutDto(
                     a.Id, System.IO.Path.GetFileName(a.FilePath), a.UploadedAt)).ToList()));
+        }
+
+        [HttpPost("{id}/attachments")]
+        public async Task<IActionResult> AddAttachment(Guid id, IFormFile file)
+        {
+            var myId = CurrentUserId; var message = await _db.Messages.FirstOrDefaultAsync(m => m.Id == id && m.SenderId == myId); // Deliberately restricted to the SENDER only — a recipient shouldn't be // able to add files to a message after the fact; that would let someone // silently inject content into a report the recipient already opened // and trusted. if (message == null) return NotFound(new { detail = "پیام یافت نشد یا شما فرستنده آن نیستید" });
+            var (success, relativePath, error) = await _fileStorage.SaveAsync(file, "messages", isPublic: false, isImage: false);
+            if (!success) return BadRequest(new { detail = error });
+
+            var attachment = new MessageAttachment { MessageId = id, FilePath = relativePath! };
+            _db.MessageAttachments.Add(attachment);
+            await _db.SaveChangesAsync();
+
+            return Ok(new { id = attachment.Id, fileName = file.FileName });
+        }
+
+        // GET /api/messages/attachments/{attachmentId}/download 
+        // This is the private-file access-control gate mentioned in Step 3 — the 
+        // ONLY way a private file is ever served. It re-checks the exact same 
+        // "are you the sender or a recipient of the parent message" rule used in 
+        // Get(id) above, meaning an attachment is exactly as protected as the 
+        // message it belongs to, never more loosely.
+        [HttpGet("attachments/{attachmentId}/download")]
+        public async Task<IActionResult> DownloadAttachment(Guid attachmentId)
+        {
+            var myId = CurrentUserId;
+            var attachment = await _db.MessageAttachments
+                .Include(a => a.Message).ThenInclude(m => m.Recipients)
+                .FirstOrDefaultAsync(a => a.Id == attachmentId);
+
+            if (attachment == null) return NotFound();
+
+            var isSender = attachment.Message.SenderId == myId;
+            var isRecipient = attachment.Message.Recipients.Any(r => r.RecipientId == myId);
+            if (!isSender && !isRecipient)
+                return Forbid("شما اجازه دسترسی به این فایل را ندارید");
+
+            var fullPath = _fileStorage.GetFullPath(attachment.FilePath);
+            if (!System.IO.File.Exists(fullPath))
+                return NotFound(new { detail = "فایل روی سرور یافت نشد" });
+
+            var contentType = "application/octet-stream";
+            // generic; browser will prompt to download
+            return PhysicalFile(fullPath, contentType, Path.GetFileName(attachment.FilePath));
         }
 
         // POST /api/messages
