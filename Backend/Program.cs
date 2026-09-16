@@ -1,13 +1,14 @@
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
 using Backend.Data;
+using Backend.Extensions;
 using Backend.Models;
 using Backend.Services;
-using Backend.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;
 using System.Security.Claims;
+using System.Text;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -51,6 +52,13 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<ScopeService>();
+
+builder.Services.Configure<FileStorageOptions>(builder.Configuration.GetSection("FileStorage"));
+builder.Services.AddScoped<FileStorageService>();
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 15 * 1024 * 1024; // slightly above your app-level 10MB check
+});
 
 builder.Services.AddControllers();
 
@@ -97,6 +105,29 @@ using (var scope = app.Services.CreateScope())
     */
     await DbSeeder.SeedAdminAsync(scope.ServiceProvider, app.Configuration);
 }
+
+// Ensure the public uploads folder exists before static file middleware
+// starts — PhysicalFileProvider requires the directory to already be
+// present at startup, unlike FileStorageService's own CreateDirectory
+// call, which only runs later, on first upload.
+var publicUploadsPath = Path.Combine(app.Environment.ContentRootPath, "Uploads", "public");
+Directory.CreateDirectory(publicUploadsPath);
+
+var privateUploadsPath = Path.Combine(app.Environment.ContentRootPath, "Uploads", "private");
+Directory.CreateDirectory(privateUploadsPath);
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(publicUploadsPath),
+    RequestPath = "/files/public"
+});
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(
+        Path.Combine(app.Environment.ContentRootPath, "Uploads", "public")),
+    RequestPath = "/files/public"
+});
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

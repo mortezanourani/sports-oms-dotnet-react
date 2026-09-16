@@ -12,11 +12,14 @@ namespace Backend.Controllers
     [Authorize]
     public class ChampionsController : ControllerBase
     {
-        private readonly ApplicationDbContext _db; private readonly ScopeService _scope;
-        public ChampionsController(ApplicationDbContext db, ScopeService scope)
+        private readonly ApplicationDbContext _db; 
+        private readonly ScopeService _scope;
+        private readonly FileStorageService _fileStorage;
+        public ChampionsController(ApplicationDbContext db, ScopeService scope, FileStorageService fileStorage)
         {
             _db = db;
             _scope = scope;
+            _fileStorage = fileStorage;
         }
 
         // GET /api/champions
@@ -173,6 +176,29 @@ namespace Backend.Controllers
 
             return Ok(new { success = true });
         }
+
+        [HttpPost("{id}/photo")]
+        [Authorize(Roles = "Admin,Manager,SportOfficer")]
+        public async Task<IActionResult> UploadPhoto(Guid id, IFormFile file)
+        {
+            var champion = await _db.Champions.FindAsync(id);
+            if (champion == null) return NotFound(new { detail = "قهرمان یافت نشد" });
+
+            var (success, relativePath, error) = await _fileStorage.SaveAsync(file, "champions", isPublic: true, isImage: true);
+            if (!success) return BadRequest(new { detail = error });
+
+            // If a photo already existed, delete the old physical file so uploads
+            // don't accumulate orphaned files on disk every time someone replaces
+            // a champion's photo.
+            if (!string.IsNullOrEmpty(champion.PhotoPath))
+                _fileStorage.Delete(champion.PhotoPath);
+
+            champion.PhotoPath = relativePath;
+            await _db.SaveChangesAsync();
+
+            return Ok(new { photoUrl = $"/files/{relativePath}" });
+        }
+
 
         // POST /api/champions/{championId}/medals
         // Nested under the champion's own route — this is what makes the
