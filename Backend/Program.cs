@@ -93,6 +93,8 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+app.UseMiddleware<Backend.Middleware.ExceptionHandlingMiddleware>();
+
 using (var scope = app.Services.CreateScope())
 {
     /*
