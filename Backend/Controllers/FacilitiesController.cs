@@ -48,8 +48,8 @@ namespace Backend.Controllers
             var count = await qs.CountAsync();
             var items = await qs.Skip((page - 1) * pageSize).Take(pageSize)
             .Select(f => new FacilityOutDto(
-            f.Id, f.FacilityType.ToString(), f.Name, f.Address, f.SportType,
-            f.OwnerName, f.OwnerContact, f.CityId, f.City.Name, f.City.Province.Name, f.CreatedAt))
+                    f.Id, f.FacilityType.ToString(), f.Name, f.Address, f.SportType,
+                    f.OwnerName, f.OwnerContact, f.CityId, f.City.ProvinceId, f.City.Name, f.City.Province.Name, f.CreatedAt))
             .ToListAsync();
 
             return Ok(new { items, count });
@@ -63,7 +63,7 @@ namespace Backend.Controllers
             if (f == null) return NotFound();
 
             return Ok(new FacilityOutDto(f.Id, f.FacilityType.ToString(), f.Name, f.Address, f.SportType,
-            f.OwnerName, f.OwnerContact, f.CityId, f.City.Name, f.City.Province.Name, f.CreatedAt));
+            f.OwnerName, f.OwnerContact, f.CityId, f.City.ProvinceId, f.City.Name, f.City.Province.Name, f.CreatedAt));
         }
 
         [HttpPost]
