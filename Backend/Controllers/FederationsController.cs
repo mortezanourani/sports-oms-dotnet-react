@@ -118,5 +118,30 @@ namespace Backend.Controllers
 
             return Ok(new { success = true });
         }
+
+        // GET /api/federations/{id}/positions
+        // Full leadership history for one federation — every past and current
+        // President/Miss/Vice, reusing the same FederationPositionOutDto shape
+        // UsersController already returns, just queried from the opposite
+        // direction (by FederationId instead of UserId).
+        [HttpGet("{id}/positions")]
+        public async Task<IActionResult> GetPositions(Guid id)
+        {
+            var exists = await _db.Federations.AnyAsync(f => f.Id == id);
+            if (!exists) return NotFound(new { detail = "فدراسیون یافت نشد" });
+
+            var positions = await _db.FederationPositions
+                .Include(p => p.User)
+                .Include(p => p.Federation)
+                .Where(p => p.FederationId == id)
+                .OrderByDescending(p => p.StartDate)
+                .Select(p => new FederationPositionOutDto(
+                    p.Id, p.Position.ToString(), p.StartDate, p.EndDate,
+                    p.UserId, p.User.FirstName!, p.User.LastName!,
+                    p.FederationId, p.Federation.Name))
+                .ToListAsync();
+
+            return Ok(positions);
+        }
     }
 }
