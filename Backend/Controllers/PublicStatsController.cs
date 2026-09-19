@@ -69,9 +69,9 @@ namespace Backend.Controllers
                     c.City != null ? c.City.Name : null,
                     c.PhotoPath != null ? $"/files/{c.PhotoPath}" : null,
                     c.Medals.Count,
-                    c.Medals.Count(m => m.MedalType == Models.MedalType.Gold),
-                    c.Medals.Count(m => m.MedalType == Models.MedalType.Silver),
-                    c.Medals.Count(m => m.MedalType == Models.MedalType.Bronze)))
+                    c.Medals.Sum(m => m.MedalType == Models.MedalType.Gold ? m.Count : 0),
+                    c.Medals.Sum(m => m.MedalType == Models.MedalType.Silver ? m.Count : 0),
+                    c.Medals.Sum(m => m.MedalType == Models.MedalType.Bronze ? m.Count : 0)))
                 .ToListAsync();
 
             return Ok(new { items, count });

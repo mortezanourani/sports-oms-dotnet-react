@@ -484,6 +484,11 @@ namespace Backend.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AgeGroup")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("age_group");
+
                     b.Property<Guid>("ChampionId")
                         .HasColumnType("uuid")
                         .HasColumnName("champion_id");
@@ -493,9 +498,22 @@ namespace Backend.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("competition_name");
 
+                    b.Property<int>("Count")
+                        .HasColumnType("integer")
+                        .HasColumnName("count");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<string>("Field")
+                        .HasColumnType("text")
+                        .HasColumnName("field");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("level");
 
                     b.Property<string>("MedalType")
                         .IsRequired()

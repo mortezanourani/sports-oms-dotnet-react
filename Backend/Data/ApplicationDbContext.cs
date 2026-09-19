@@ -36,6 +36,8 @@ namespace Backend.Data
             builder.Entity<AthleteCount>().Property(a => a.Gender).HasConversion<string>();
             builder.Entity<Champion>().Property(c => c.Gender).HasConversion<string>();
             builder.Entity<Medal>().Property(m => m.MedalType).HasConversion<string>();
+            builder.Entity<Medal>().Property(m => m.AgeGroup).HasConversion<string>();
+            builder.Entity<Medal>().Property(m => m.Level).HasConversion<string>();
 
             // Prevent double-messaging the same recipient
             builder.Entity<MessageRecipient>()
