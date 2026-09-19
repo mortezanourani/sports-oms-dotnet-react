@@ -71,8 +71,8 @@ namespace Backend.Controllers
             return Ok(new ChampionDetailOutDto(
                 champion.Id, champion.FullName, champion.BirthDate, champion.Gender.ToString(),
                 champion.FederationId, champion.Federation.Name,
-                champion.CityId, champion.City?.Name, champion.PhotoPath,
-                champion.Medals
+                champion.CityId, champion.City?.ProvinceId, champion.City?.Name, champion.City?.Province.Name,
+                champion.PhotoPath, champion.Medals
                     .OrderByDescending(m => m.Year)
                     .Select(m => new MedalOutDto(m.Id, m.MedalType.ToString(), m.AgeGroup.ToString(),
                             m.Level.ToString(), m.CompetitionName, m.Year, m.Count, m.Field))
