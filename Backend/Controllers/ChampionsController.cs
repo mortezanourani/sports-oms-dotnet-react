@@ -74,7 +74,8 @@ namespace Backend.Controllers
                 champion.CityId, champion.City?.Name, champion.PhotoPath,
                 champion.Medals
                     .OrderByDescending(m => m.Year)
-                    .Select(m => new MedalOutDto(m.Id, m.MedalType.ToString(), m.CompetitionName, m.Year))
+                    .Select(m => new MedalOutDto(m.Id, m.MedalType.ToString(), m.AgeGroup.ToString(),
+                            m.Level.ToString(), m.CompetitionName, m.Year, m.Count, m.Field))
                     .ToList()));
         }
 
@@ -215,18 +216,32 @@ namespace Backend.Controllers
             if (!Enum.TryParse<MedalType>(dto.MedalType, out var medalTypeEnum))
                 return BadRequest(new { detail = "نوع مدال نامعتبر است" });
 
+            if (!Enum.TryParse<AgeGroup>(dto.AgeGroup, out var ageGroupEnum))
+                return BadRequest(new { detail = "گروه سنی نامعتبر است" });
+
+            if (!Enum.TryParse<TournamentLevel>(dto.Level, out var levelEnum))
+                return BadRequest(new { detail = "سطح مسابقه نامعتبر است" });
+
+            if (dto.Count < 1)
+                return BadRequest(new { detail = "تعداد مدال باید حداقل 1 باشد" });
+
             var medal = new Medal
             {
                 ChampionId = championId,
                 MedalType = medalTypeEnum,
+                AgeGroup = ageGroupEnum,
+                Level = levelEnum,
                 CompetitionName = dto.CompetitionName,
-                Year = dto.Year
+                Year = dto.Year,
+                Count = dto.Count,
+                Field = dto.Field
             };
 
             _db.Medals.Add(medal);
             await _db.SaveChangesAsync();
 
-            return Ok(new MedalOutDto(medal.Id, medal.MedalType.ToString(), medal.CompetitionName, medal.Year));
+            return Ok(new MedalOutDto(medal.Id, medal.MedalType.ToString(), medal.AgeGroup.ToString(),
+                medal.Level.ToString(), medal.CompetitionName, medal.Year, medal.Count, medal.Field));
         }
 
         // DELETE /api/champions/{championId}/medals/{medalId}

@@ -27,8 +27,10 @@
         List<MedalOutDto> Medals);
 
     public record MedalCreateDto(
-        string MedalType, string CompetitionName, int Year);
+        string MedalType, string AgeGroup, string Level,
+        string CompetitionName, int Year, int Count, string? Field);
 
     public record MedalOutDto(
-        Guid Id, string MedalType, string CompetitionName, int Year);
+        Guid Id, string MedalType, string AgeGroup, string Level,
+        string CompetitionName, int Year, int Count, string? Field);
 }
