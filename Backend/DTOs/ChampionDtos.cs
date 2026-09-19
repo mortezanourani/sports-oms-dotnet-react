@@ -23,8 +23,8 @@
     public record ChampionDetailOutDto(
         Guid Id, string FullName, DateOnly? BirthDate, string Gender,
         Guid FederationId, string FederationName,
-        Guid? CityId, string? CityName, string? PhotoPath,
-        List<MedalOutDto> Medals);
+        Guid? CityId, Guid? ProvinceId, string? CityName, string? ProvinceName,
+        string? PhotoPath, List<MedalOutDto> Medals);
 
     public record MedalCreateDto(
         string MedalType, string AgeGroup, string Level,
