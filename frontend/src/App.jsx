@@ -7,6 +7,7 @@ import AthleteStats from './pages/public/AthleteStats';
 import ChampionStats from './pages/public/ChampionStats';
 import FacilityStats from './pages/public/FacilityStats';
 import FacilitiesList from './pages/dashboard/Facilities/FacilitiesList';
+import LocationsPage from './pages/dashboard/Locations/LocationsPage';
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard/facilities" element={<FacilitiesList />} />
+            <Route path="/dashboard/locations" element={<LocationsPage />} />
           </Route>
         </Route>
       </Routes>
