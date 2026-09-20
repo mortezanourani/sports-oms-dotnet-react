@@ -23,3 +23,9 @@ export const TOURNAMENT_LEVEL_LABELS = {
     National: 'کشوری',
     International: 'بین‌المللی'
 };
+
+export const FEDERATION_POSITION_LABELS = {
+  President: 'رئیس',
+  Miss: 'نایب رئیس',
+  Vice: 'دبیر'
+};
