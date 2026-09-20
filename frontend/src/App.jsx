@@ -10,6 +10,7 @@ import FacilitiesList from './pages/dashboard/Facilities/FacilitiesList';
 import LocationsPage from './pages/dashboard/Locations/LocationsPage';
 import ChampionsList from './pages/dashboard/Champions/ChampionsList';
 import FederationsList from './pages/dashboard/Federations/FederationsList';
+import AthleteCountsList from './pages/dashboard/Athletes/AthleteCountsList';
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/dashboard/facilities" element={<FacilitiesList />} />
             <Route path="/dashboard/champions" element={<ChampionsList />} />
             <Route path="/dashboard/federations" element={<FederationsList />} />
+            <Route path="/dashboard/athletes" element={<AthleteCountsList />} />
             <Route path="/dashboard/locations" element={<LocationsPage />} />
           </Route>
         </Route>

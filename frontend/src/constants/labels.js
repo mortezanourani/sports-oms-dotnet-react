@@ -29,3 +29,8 @@ export const FEDERATION_POSITION_LABELS = {
   Miss: 'نایب رئیس',
   Vice: 'دبیر'
 };
+
+export const PERSIAN_MONTHS = [
+  'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+  'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند',
+];
