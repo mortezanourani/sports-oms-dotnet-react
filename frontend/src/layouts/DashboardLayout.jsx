@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, Link } from 'react-router-dom';
-import { Layout, Menu, Button, Typography } from 'antd';
+import { Layout, Menu, Button, Typography, Badge } from 'antd';
 import {
     HomeOutlined, TeamOutlined, TrophyOutlined, BankOutlined,
     EnvironmentOutlined, MessageOutlined, LogoutOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../hooks/useAuth';
 import { logout } from '../api/auth';
+import { useUnreadCount} from '../hooks/useMessages';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -27,20 +28,30 @@ const ROLE_MENU = {
     FederationRep: ['messages'],
 };
 
-const ALL_MENU_ITEMS = [
-    { key: 'facilities', icon: <BankOutlined />, label: <Link to="/dashboard/facilities">اماکن ورزشی</Link> },
-    { key: 'champions', icon: <TrophyOutlined />, label: <Link to="/dashboard/champions">قهرمانان</Link> },
-    { key: 'federations', icon: <TeamOutlined />, label: <Link to="/dashboard/federations">فدراسیون‌ها</Link> },
-    { key: 'athletes', icon: <HomeOutlined />, label: <Link to="/dashboard/athletes">آمار ورزشکاران</Link> },
-    { key: 'locations', icon: <EnvironmentOutlined />, label: <Link to="/dashboard/locations">استان‌ها و شهرها</Link> },
-    { key: 'users', icon: <TeamOutlined />, label: <Link to="/dashboard/users">کاربران</Link> },
-    { key: 'messages', icon: <MessageOutlined />, label: <Link to="/dashboard/messages">پیام‌ها</Link> },
-];
-
 export default function DashboardLayout() {
     const [collapsed, setCollapsed] = useState(false);
     const { role, fullName } = useAuth();
     const navigate = useNavigate();
+
+    const { data: unreadData } = useUnreadCount();
+    const ALL_MENU_ITEMS = [
+        { key: 'facilities', icon: <BankOutlined />, label: <Link to="/dashboard/facilities">اماکن ورزشی</Link> },
+        { key: 'champions', icon: <TrophyOutlined />, label: <Link to="/dashboard/champions">قهرمانان</Link> },
+        { key: 'federations', icon: <TeamOutlined />, label: <Link to="/dashboard/federations">فدراسیون‌ها</Link> },
+        { key: 'athletes', icon: <HomeOutlined />, label: <Link to="/dashboard/athletes">آمار ورزشکاران</Link> },
+        { key: 'locations', icon: <EnvironmentOutlined />, label: <Link to="/dashboard/locations">استان‌ها و شهرها</Link> },
+        { key: 'users', icon: <TeamOutlined />, label: <Link to="/dashboard/users">کاربران</Link> },
+        {
+            key: 'messages', icon: <MessageOutlined />,
+            label: (
+                <Link to="/dashboard/messages">
+                    <Badge count={unreadData?.unreadCount} size="small" offset={[10, 0]}>
+                        پیام‌ها
+                    </Badge>
+                </Link>
+            ),
+        }
+    ];
 
     const allowedKeys = ROLE_MENU[role] || [];
     const visibleItems = ALL_MENU_ITEMS.filter((item) => allowedKeys.includes(item.key));
