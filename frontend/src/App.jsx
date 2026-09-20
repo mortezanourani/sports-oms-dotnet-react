@@ -12,6 +12,7 @@ import ChampionsList from './pages/dashboard/Champions/ChampionsList';
 import FederationsList from './pages/dashboard/Federations/FederationsList';
 import AthleteCountsList from './pages/dashboard/Athletes/AthleteCountsList';
 import UsersList from './pages/dashboard/Users/UsersList';
+import MessagesPage from './pages/dashboard/Messages/MessagesPage';
 
 export default function App() {
   return (
@@ -30,7 +31,8 @@ export default function App() {
             <Route path="/dashboard/federations" element={<FederationsList />} />
             <Route path="/dashboard/athletes" element={<AthleteCountsList />} />
             <Route path="/dashboard/users" element={<UsersList />} />
-            <Route path="/dashboard/locations" element={<LocationsPage />} />
+              <Route path="/dashboard/locations" element={<LocationsPage />} />
+              <Route path="/dashboard/messages" element={<MessagesPage />} />
           </Route>
         </Route>
       </Routes>
