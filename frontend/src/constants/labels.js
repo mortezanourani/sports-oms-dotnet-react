@@ -32,5 +32,21 @@ export const FEDERATION_POSITION_LABELS = {
 
 export const PERSIAN_MONTHS = [
   'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
-  'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند',
+  'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'
 ];
+
+export const ROLE_LABELS = {
+  Admin: 'مدیر کل',
+  Manager: 'مدیر',
+  M88Officer: 'کارشناس M88',
+  M5Officer: 'کارشناس M5',
+  InsuranceOfficer: 'کارشناس بیمه',
+  SportOfficer: 'کارشناس ورزش',
+  FederationRep: 'نماینده فدراسیون'
+};
+
+export const SCOPE_LEVEL_LABELS = {
+  National: 'کشوری',
+  Province: 'استانی',
+  City: 'شهری'
+};
