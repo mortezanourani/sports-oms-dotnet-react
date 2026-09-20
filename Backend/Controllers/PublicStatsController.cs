@@ -114,5 +114,23 @@ namespace Backend.Controllers
 
             return Ok(federations);
         }
+
+        // GET /api/public/provinces
+        // A minimal, unauthenticated lookup list — just enough to populate a
+        // filter dropdown on the public pages. Deliberately not reusing the
+        // authenticated ProvinceOutDto/endpoint, since keeping this controller's
+        // surface fully separate from the authenticated one is the same design
+        // principle the whole controller was built on: nothing here should ever
+        // accidentally depend on or leak into the authenticated side.
+        [HttpGet("provinces")]
+        public async Task<IActionResult> Provinces()
+        {
+            var provinces = await _db.Provinces
+                .OrderBy(p => p.Name)
+                .Select(p => new { p.Id, p.Name })
+                .ToListAsync();
+
+            return Ok(provinces);
+        }
     }
 }
