@@ -154,7 +154,7 @@ Every role above (except Admin/Manager, who operate nationally) also carries a g
 - [x] Facilities, Champions, Federations, Athlete Statistics, Users, Messaging APIs
 - [x] File uploads (public and private)
 - [x] Public statistics endpoints
-- [ ] React dashboard and public frontend
+- [x] React dashboard and public frontend
 - [ ] Historical data import tooling
 - [ ] Production deployment
 
