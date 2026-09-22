@@ -50,3 +50,15 @@ export const SCOPE_LEVEL_LABELS = {
   Province: 'استانی',
   City: 'شهری'
 };
+
+export const FEDERATION_CATEGORY_LABELS = {
+    Championships: 'قهرمانی',
+    Para: 'پارا',
+    General: 'عمومی'
+};
+
+export const FEDERATION_LEVEL_LABELS = {
+    National: 'کشوری',
+    Provincial: 'استانی',
+    City: 'شهری'
+};

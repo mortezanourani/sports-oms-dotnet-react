@@ -1,14 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as api from '../api/federations';
 
-export function useFederations() {
-  return useQuery({ queryKey: ['federations'], queryFn: api.getFederations });
+export function useFederations(params) {
+  return useQuery({ queryKey: ['federations', params], queryFn: () => api.getFederations(params) });
 }
 
 export function useCreateFederation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.createFederation,
+    // Invalidates every 'federations' query regardless of its params —
+    // necessary because creating a Provincial federation changes both
+    // its own parent's HasChildren flag AND the list of that parent's
+    // children, two different cached queries at once.
     onSuccess: () => qc.invalidateQueries({ queryKey: ['federations'] }),
   });
 }
