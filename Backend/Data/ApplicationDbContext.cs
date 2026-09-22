@@ -31,6 +31,8 @@ namespace Backend.Data
             // Enum -> string conversions (readable in DB, matches the Django app's approach)
             builder.Entity<ApplicationUser>().Property(u => u.Role).HasConversion<string>();
             builder.Entity<ApplicationUser>().Property(u => u.ScopeLevel).HasConversion<string>();
+            builder.Entity<Federation>().Property(f => f.Category).HasConversion<string>();
+            builder.Entity<Federation>().Property(f => f.Level).HasConversion<string>();
             builder.Entity<FederationPosition>().Property(p => p.Position).HasConversion<string>();
             builder.Entity<Facility>().Property(f => f.FacilityType).HasConversion<string>();
             builder.Entity<AthleteCount>().Property(a => a.Gender).HasConversion<string>();
@@ -83,6 +85,27 @@ namespace Backend.Data
             builder.Entity<AthleteCount>()
                 .HasIndex(a => new { a.FederationId, a.CityId, a.Year, a.Month, a.Gender })
                 .IsUnique();
+
+            // Self-referencing hierarchy. Restrict (not Cascade) so a parent
+            // federation can never be deleted while children still exist —
+            // same protective pattern used everywhere else in this schema.
+            builder.Entity<Federation>()
+                .HasOne(f => f.ParentFederation)
+                .WithMany(f => f.ChildFederations)
+                .HasForeignKey(f => f.ParentFederationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<Federation>()
+                .HasOne(f => f.Province)
+                .WithMany()
+                .HasForeignKey(f => f.ProvinceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<Federation>()
+                .HasOne(f => f.City)
+                .WithMany()
+                .HasForeignKey(f => f.CityId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             builder.Entity<FederationPosition>()
                 .HasOne(a => a.Federation)

@@ -5,6 +5,7 @@ using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
 using Backend.Services;
+
 namespace Backend.Controllers
 {
     [ApiController]
@@ -12,19 +13,15 @@ namespace Backend.Controllers
     [Authorize]
     public class ChampionsController : ControllerBase
     {
-        private readonly ApplicationDbContext _db; 
+        private readonly ApplicationDbContext _db;
         private readonly ScopeService _scope;
-        private readonly FileStorageService _fileStorage;
-        public ChampionsController(ApplicationDbContext db, ScopeService scope, FileStorageService fileStorage)
+
+        public ChampionsController(ApplicationDbContext db, ScopeService scope)
         {
             _db = db;
             _scope = scope;
-            _fileStorage = fileStorage;
         }
 
-        // GET /api/champions
-        // Open to any authenticated user — the dashboard's "view" side has no
-        // role restriction anywhere in this system, only "write" actions do.
         [HttpGet]
         public async Task<IActionResult> List(Guid? federationId, int page = 1, int pageSize = 20)
         {
@@ -46,16 +43,14 @@ namespace Backend.Controllers
                 .Take(pageSize)
                 .Select(c => new ChampionListOutDto(
                     c.Id, c.FullName, c.BirthDate, c.Gender.ToString(),
-                    c.FederationId, c.Federation.Name,
+                    c.FederationId, c.Federation.Name!, // National federations always have a Name
                     c.CityId, c.City != null ? c.City.Name : null,
-                    c.Medals.Count))
+                    c.Medals.Sum(m => m.Count))) // sums actual medal Count, not row count
                 .ToListAsync();
 
             return Ok(new { items, count });
         }
 
-        // GET /api/champions/{id}
-        // Returns the full medal history — this is the detail/edit page's endpoint.
         [HttpGet("{id}")]
         public async Task<IActionResult> Get(Guid id)
         {
@@ -70,18 +65,16 @@ namespace Backend.Controllers
 
             return Ok(new ChampionDetailOutDto(
                 champion.Id, champion.FullName, champion.BirthDate, champion.Gender.ToString(),
-                champion.FederationId, champion.Federation.Name,
-                champion.CityId, champion.City?.ProvinceId, champion.City?.Name, champion.City?.Province.Name,
-                champion.PhotoPath, champion.Medals
+                champion.FederationId, champion.Federation.Name!,
+                champion.CityId, champion.City?.Name, champion.PhotoPath,
+                champion.Medals
                     .OrderByDescending(m => m.Year)
-                    .Select(m => new MedalOutDto(m.Id, m.MedalType.ToString(), m.AgeGroup.ToString(),
-                            m.Level.ToString(), m.CompetitionName, m.Year, m.Count, m.Field))
+                    .Select(m => new MedalOutDto(
+                        m.Id, m.MedalType.ToString(), m.AgeGroup.ToString(), m.Level.ToString(),
+                        m.CompetitionName, m.Year, m.Count, m.Field))
                     .ToList()));
         }
 
-        // POST /api/champions
-        // Restricted to Admin, Manager, SportOfficer — matches the role table's
-        // "Sport officer: can add/update/delete champions and their medals."
         [HttpPost]
         [Authorize(Roles = "Admin,Manager,SportOfficer")]
         public async Task<IActionResult> Create(ChampionCreateDto dto)
@@ -89,9 +82,9 @@ namespace Backend.Controllers
             if (!Enum.TryParse<Gender>(dto.Gender, out var genderEnum))
                 return BadRequest(new { detail = "جنسیت نامعتبر است" });
 
-            var federationExists = await _db.Federations.AnyAsync(f => f.Id == dto.FederationId);
-            if (!federationExists)
-                return BadRequest(new { detail = "فدراسیون انتخاب‌شده معتبر نیست" });
+            var federation = await _db.Federations.FindAsync(dto.FederationId);
+            if (federation == null || federation.Level != FederationLevel.National)
+                return BadRequest(new { detail = "فدراسیون انتخاب‌شده باید یک فدراسیون کشوری باشد" });
 
             if (dto.CityId.HasValue)
             {
@@ -99,11 +92,6 @@ namespace Backend.Controllers
                 catch (UnauthorizedAccessException ex) { return Forbid(ex.Message); }
                 catch (KeyNotFoundException) { return BadRequest(new { detail = "شهر انتخاب‌شده معتبر نیست" }); }
             }
-            // Deliberate decision: a champion created with no CityId is allowed
-            // through, even for a scoped officer — leaving city blank means
-            // "unknown," which isn't the same as trying to claim jurisdiction
-            // over a city outside the officer's scope. The scope check only
-            // fires when a specific city IS provided.
 
             var champion = new Champion
             {
@@ -121,7 +109,6 @@ namespace Backend.Controllers
             return CreatedAtAction(nameof(Get), new { id = champion.Id }, new { id = champion.Id });
         }
 
-        // PUT /api/champions/{id}
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin,Manager,SportOfficer")]
         public async Task<IActionResult> Update(Guid id, ChampionUpdateDto dto)
@@ -133,9 +120,9 @@ namespace Backend.Controllers
             if (!Enum.TryParse<Gender>(dto.Gender, out var genderEnum))
                 return BadRequest(new { detail = "جنسیت نامعتبر است" });
 
-            var federationExists = await _db.Federations.AnyAsync(f => f.Id == dto.FederationId);
-            if (!federationExists)
-                return BadRequest(new { detail = "فدراسیون انتخاب‌شده معتبر نیست" });
+            var federation = await _db.Federations.FindAsync(dto.FederationId);
+            if (federation == null || federation.Level != FederationLevel.National)
+                return BadRequest(new { detail = "فدراسیون انتخاب‌شده باید یک فدراسیون کشوری باشد" });
 
             if (dto.CityId.HasValue)
             {
@@ -156,14 +143,6 @@ namespace Backend.Controllers
             return Ok(new { id = champion.Id });
         }
 
-        // DELETE /api/champions/{id}
-        // No try/catch around a Restrict-based FK failure needed here — unlike
-        // Province/City/Federation, nothing else in the system points *at* a
-        // Champion as a required foreign key except Medal, and Medal's FK
-        // uses Cascade by EF Core's default (required FK, no explicit
-        // override configured) — meaning deleting a champion correctly and
-        // intentionally deletes their medals along with them, which is the
-        // desired behavior here: a medal has no meaning without its champion.
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin,Manager,SportOfficer")]
         public async Task<IActionResult> Delete(Guid id)
@@ -172,39 +151,12 @@ namespace Backend.Controllers
             if (champion == null)
                 return NotFound(new { detail = "قهرمان یافت نشد" });
 
-            _db.Champions.Remove(champion);
+            _db.Champions.Remove(champion); // cascades to Medals (default EF behavior, required FK)
             await _db.SaveChangesAsync();
 
             return Ok(new { success = true });
         }
 
-        [HttpPost("{id}/photo")]
-        [Authorize(Roles = "Admin,Manager,SportOfficer")]
-        public async Task<IActionResult> UploadPhoto(Guid id, IFormFile file)
-        {
-            var champion = await _db.Champions.FindAsync(id);
-            if (champion == null) return NotFound(new { detail = "قهرمان یافت نشد" });
-
-            var (success, relativePath, error) = await _fileStorage.SaveAsync(file, "champions", isPublic: true, isImage: true);
-            if (!success) return BadRequest(new { detail = error });
-
-            // If a photo already existed, delete the old physical file so uploads
-            // don't accumulate orphaned files on disk every time someone replaces
-            // a champion's photo.
-            if (!string.IsNullOrEmpty(champion.PhotoPath))
-                _fileStorage.Delete(champion.PhotoPath);
-
-            champion.PhotoPath = relativePath;
-            await _db.SaveChangesAsync();
-
-            return Ok(new { photoUrl = $"/files/{relativePath}" });
-        }
-
-
-        // POST /api/champions/{championId}/medals
-        // Nested under the champion's own route — this is what makes the
-        // parent-child relationship explicit in the API's shape, not just in
-        // the database schema.
         [HttpPost("{championId}/medals")]
         [Authorize(Roles = "Admin,Manager,SportOfficer")]
         public async Task<IActionResult> AddMedal(Guid championId, MedalCreateDto dto)
@@ -215,15 +167,12 @@ namespace Backend.Controllers
 
             if (!Enum.TryParse<MedalType>(dto.MedalType, out var medalTypeEnum))
                 return BadRequest(new { detail = "نوع مدال نامعتبر است" });
-
             if (!Enum.TryParse<AgeGroup>(dto.AgeGroup, out var ageGroupEnum))
                 return BadRequest(new { detail = "گروه سنی نامعتبر است" });
-
             if (!Enum.TryParse<TournamentLevel>(dto.Level, out var levelEnum))
                 return BadRequest(new { detail = "سطح مسابقه نامعتبر است" });
-
             if (dto.Count < 1)
-                return BadRequest(new { detail = "تعداد مدال باید حداقل 1 باشد" });
+                return BadRequest(new { detail = "تعداد مدال باید حداقل ۱ باشد" });
 
             var medal = new Medal
             {
@@ -244,20 +193,11 @@ namespace Backend.Controllers
                 medal.Level.ToString(), medal.CompetitionName, medal.Year, medal.Count, medal.Field));
         }
 
-        // DELETE /api/champions/{championId}/medals/{medalId}
-        // Scoped under the champion's ID too, not just the medal's ID — this
-        // guards against a subtle bug: without checking championId matches,
-        // someone could pass any valid medalId in the URL regardless of which
-        // champion it actually belongs to, and it would still delete
-        // successfully. Requiring both IDs to match confirms the medal
-        // actually belongs to the champion the caller thinks they're editing.
         [HttpDelete("{championId}/medals/{medalId}")]
         [Authorize(Roles = "Admin,Manager,SportOfficer")]
         public async Task<IActionResult> DeleteMedal(Guid championId, Guid medalId)
         {
-            var medal = await _db.Medals
-                .FirstOrDefaultAsync(m => m.Id == medalId && m.ChampionId == championId);
-
+            var medal = await _db.Medals.FirstOrDefaultAsync(m => m.Id == medalId && m.ChampionId == championId);
             if (medal == null)
                 return NotFound(new { detail = "مدال یافت نشد" });
 
@@ -267,5 +207,4 @@ namespace Backend.Controllers
             return Ok(new { success = true });
         }
     }
-
 }

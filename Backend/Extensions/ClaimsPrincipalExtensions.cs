@@ -18,5 +18,8 @@ namespace Backend.Extensions
             var val = user.FindFirst("scope_city_id")?.Value;
             return Guid.TryParse(val, out var id) ? id : null;
         }
+
+        public static string? Role(this ClaimsPrincipal user) =>
+            user.FindFirst("role")?.Value;
     }
 }
