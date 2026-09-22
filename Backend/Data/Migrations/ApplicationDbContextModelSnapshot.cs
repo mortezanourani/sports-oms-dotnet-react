@@ -421,18 +421,43 @@ namespace Backend.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("Name")
+                    b.Property<string>("Category")
                         .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("category");
+
+                    b.Property<Guid?>("CityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("city_id");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("level");
+
+                    b.Property<string>("Name")
                         .HasColumnType("text")
                         .HasColumnName("name");
 
-                    b.Property<string>("SportType")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("sport_type");
+                    b.Property<Guid?>("ParentFederationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_federation_id");
+
+                    b.Property<Guid?>("ProvinceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("province_id");
 
                     b.HasKey("Id")
                         .HasName("pk_federations");
+
+                    b.HasIndex("CityId")
+                        .HasDatabaseName("ix_federations_city_id");
+
+                    b.HasIndex("ParentFederationId")
+                        .HasDatabaseName("ix_federations_parent_federation_id");
+
+                    b.HasIndex("ProvinceId")
+                        .HasDatabaseName("ix_federations_province_id");
 
                     b.ToTable("federations", (string)null);
                 });
@@ -949,6 +974,33 @@ namespace Backend.Data.Migrations
                     b.Navigation("Facility");
                 });
 
+            modelBuilder.Entity("Backend.Models.Federation", b =>
+                {
+                    b.HasOne("Backend.Models.City", "City")
+                        .WithMany()
+                        .HasForeignKey("CityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_federations_cities_city_id");
+
+                    b.HasOne("Backend.Models.Federation", "ParentFederation")
+                        .WithMany("ChildFederations")
+                        .HasForeignKey("ParentFederationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_federations_federations_parent_federation_id");
+
+                    b.HasOne("Backend.Models.Province", "Province")
+                        .WithMany()
+                        .HasForeignKey("ProvinceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_federations_provinces_province_id");
+
+                    b.Navigation("City");
+
+                    b.Navigation("ParentFederation");
+
+                    b.Navigation("Province");
+                });
+
             modelBuilder.Entity("Backend.Models.FederationPosition", b =>
                 {
                     b.HasOne("Backend.Models.Federation", "Federation")
@@ -1111,6 +1163,8 @@ namespace Backend.Data.Migrations
             modelBuilder.Entity("Backend.Models.Federation", b =>
                 {
                     b.Navigation("Champions");
+
+                    b.Navigation("ChildFederations");
 
                     b.Navigation("Positions");
                 });
