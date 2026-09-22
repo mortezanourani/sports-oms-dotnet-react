@@ -1,49 +1,22 @@
 import { useState } from 'react';
-import { Table, Button, Space, Typography, Popconfirm, message, Modal, Form, Input } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, HistoryOutlined } from '@ant-design/icons';
-import {
-  useFederations, useCreateFederation, useUpdateFederation, useDeleteFederation,
-} from '../../../hooks/useFederations';
+import { Table, Button, Typography, Popconfirm, message, Space, Tag } from 'antd';
+import { PlusOutlined, DeleteOutlined, HistoryOutlined } from '@ant-design/icons';
+import { useFederations, useDeleteFederation } from '../../../hooks/useFederations';
+import { useAuth } from '../../../hooks/useAuth';
+import { canManageNational } from '../../../utils/federationPermissions';
+import { FEDERATION_CATEGORY_LABELS } from '../../../constants/labels';
+import FederationFormModal from './FederationFormModal';
 import PositionsModal from './PositionsModal';
+import ProvincialFederationsPanel from './ProvincialFederationsPanel';
 
 const { Title } = Typography;
 
 export default function FederationsList() {
-  const { data: federations, isLoading } = useFederations();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingFederation, setEditingFederation] = useState(null);
-  const [positionsFederation, setPositionsFederation] = useState(null);
-  const [form] = Form.useForm();
-
-  const createMutation = useCreateFederation();
-  const updateMutation = useUpdateFederation();
+  const auth = useAuth();
+  const { data: federations, isLoading } = useFederations({ level: 'National' });
   const deleteMutation = useDeleteFederation();
-
-  const openCreate = () => {
-    setEditingFederation(null);
-    form.resetFields();
-    setModalOpen(true);
-  };
-
-  const openEdit = (federation) => {
-    setEditingFederation(federation);
-    form.setFieldsValue(federation);
-    setModalOpen(true);
-  };
-
-  const handleFinish = async (values) => {
-    try {
-      if (editingFederation) {
-        await updateMutation.mutateAsync({ id: editingFederation.id, payload: values });
-      } else {
-        await createMutation.mutateAsync(values);
-      }
-      message.success('با موفقیت ذخیره شد');
-      setModalOpen(false);
-    } catch (err) {
-      message.error(err.response?.data?.detail || 'خطایی رخ داد');
-    }
-  };
+  const [createOpen, setCreateOpen] = useState(false);
+  const [positionsFederation, setPositionsFederation] = useState(null);
 
   const handleDelete = async (id) => {
     try {
@@ -55,58 +28,39 @@ export default function FederationsList() {
   };
 
   const columns = [
-    { title: 'نام فدراسیون', dataIndex: 'name' },
-    { title: 'نوع ورزش', dataIndex: 'sportType' },
+    { title: 'نام', dataIndex: 'displayName' },
+    { title: 'دسته‌بندی', dataIndex: 'category', render: (v) => <Tag>{FEDERATION_CATEGORY_LABELS[v] || v}</Tag> },
     {
       title: 'عملیات', key: 'actions',
       render: (_, record) => (
-        <Space>
-          <Button icon={<HistoryOutlined />} size="small" onClick={() => setPositionsFederation(record)}>
-            سوابق مسئولین
-          </Button>
-          <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(record)} />
-          <Popconfirm title="حذف این فدراسیون؟" onConfirm={() => handleDelete(record.id)} okText="بله" cancelText="خیر">
-            <Button icon={<DeleteOutlined />} size="small" danger />
-          </Popconfirm>
-        </Space>
+          <Space>
+            <Button icon={<HistoryOutlined />} size="small" onClick={() => setPositionsFederation(record)}>سوابق</Button>
+            {canManageNational(auth) && (
+                <Popconfirm title="حذف این فدراسیون؟ (شامل تمام زیرمجموعه‌های استانی و شهری آن)" onConfirm={() => handleDelete(record.id)} okText="بله" cancelText="خیر">
+                  <Button icon={<DeleteOutlined />} size="small" danger />
+                </Popconfirm>
+            )}
+          </Space>
       ),
     },
   ];
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4}>فدراسیون‌ها</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>افزودن فدراسیون جدید</Button>
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+          <Title level={4}>فدراسیون‌ها</Title>
+          {canManageNational(auth) && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>افزودن فدراسیون کشوری</Button>
+          )}
+        </div>
+
+        <Table
+            rowKey="id" columns={columns} dataSource={federations} loading={isLoading} pagination={false}
+            expandable={{ expandedRowRender: (record) => <ProvincialFederationsPanel nationalFederation={record} /> }}
+        />
+
+        <FederationFormModal level="National" open={createOpen} onClose={() => setCreateOpen(false)} />
+        <PositionsModal federation={positionsFederation} open={!!positionsFederation} onClose={() => setPositionsFederation(null)} />
       </div>
-
-      <Table rowKey="id" columns={columns} dataSource={federations} loading={isLoading} pagination={false} />
-
-      <Modal
-        title={editingFederation ? 'ویرایش فدراسیون' : 'افزودن فدراسیون جدید'}
-        open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={createMutation.isPending || updateMutation.isPending}
-        okText="ذخیره"
-        cancelText="انصراف"
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical" onFinish={handleFinish}>
-          <Form.Item name="name" label="نام فدراسیون" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="sportType" label="نوع ورزش" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <PositionsModal
-        federation={positionsFederation}
-        open={!!positionsFederation}
-        onClose={() => setPositionsFederation(null)}
-      />
-    </div>
   );
 }

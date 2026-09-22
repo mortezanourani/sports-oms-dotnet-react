@@ -24,7 +24,7 @@ const ROLE_MENU = {
     M88Officer: ['facilities', 'messages'],
     M5Officer: ['facilities', 'messages'],
     InsuranceOfficer: ['athletes', 'messages'],
-    SportOfficer: ['champions', 'messages'],
+    SportOfficer: ['champions', 'federations', 'messages'],
     FederationRep: ['messages'],
 };
 

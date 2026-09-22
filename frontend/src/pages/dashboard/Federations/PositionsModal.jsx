@@ -17,7 +17,7 @@ export default function PositionsModal({ federation, open, onClose }) {
 
   return (
     <Modal
-      title={federation ? `سوابق مسئولین فدراسیون ${federation.name}` : 'سوابق مسئولین'}
+      title={federation ? `سوابق مسئولین فدراسیون ${federation.displayName}` : 'سوابق مسئولین'}
       open={open}
       onCancel={onClose}
       footer={null}
