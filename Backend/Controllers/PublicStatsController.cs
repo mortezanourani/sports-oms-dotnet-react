@@ -2,34 +2,22 @@
 using Microsoft.EntityFrameworkCore;
 using Backend.Data;
 using Backend.DTOs;
+using Backend.Models;
 
 namespace Backend.Controllers
 {
     [ApiController]
     [Route("api/public")]
-    // No [Authorize] anywhere on this controller at all — this is the one
-    // controller in the whole backend where that's intentional and correct,
-    // not an oversight. Contrast with Facilities/Champions/AthleteCount,
-    // which are Authorize by default on their List/Get actions.
     public class PublicStatsController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
 
-        public PublicStatsController(ApplicationDbContext db)
-        {
-            _db = db;
-        }
+        public PublicStatsController(ApplicationDbContext db) => _db = db;
 
-        // GET /api/public/facilities/stats
-        // Returns counts grouped by type + province + city — exactly the
-        // shape a chart/table on a public stats page would consume directly,
-        // without the frontend needing to do its own aggregation client-side.
         [HttpGet("facilities/stats")]
         public async Task<IActionResult> FacilityStats(string? provinceName)
         {
-            var qs = _db.Facilities
-                .Include(f => f.City).ThenInclude(c => c.Province)
-                .AsQueryable();
+            var qs = _db.Facilities.Include(f => f.City).ThenInclude(c => c.Province).AsQueryable();
 
             if (!string.IsNullOrEmpty(provinceName))
                 qs = qs.Where(f => f.City.Province.Name == provinceName);
@@ -43,10 +31,6 @@ namespace Backend.Controllers
             return Ok(stats);
         }
 
-        // GET /api/public/champions
-        // A public "hall of fame" style listing — every champion with their
-        // medal counts, since this is exactly the kind of content meant to
-        // be showcased publicly, unlike facility ownership details.
         [HttpGet("champions")]
         public async Task<IActionResult> Champions(Guid? federationId, int page = 1, int pageSize = 20)
         {
@@ -61,25 +45,22 @@ namespace Backend.Controllers
 
             var count = await qs.CountAsync();
             var items = await qs
-                .OrderByDescending(c => c.Medals.Count) // most decorated champions surface first
+                .OrderByDescending(c => c.Medals.Sum(m => m.Count))
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(c => new PublicChampionDto(
-                    c.Id, c.FullName, c.Gender.ToString(), c.Federation.Name,
+                    c.Id, c.FullName, c.Gender.ToString(), c.Federation.Name!,
                     c.City != null ? c.City.Name : null,
                     c.PhotoPath != null ? $"/files/{c.PhotoPath}" : null,
-                    c.Medals.Count,
-                    c.Medals.Sum(m => m.MedalType == Models.MedalType.Gold ? m.Count : 0),
-                    c.Medals.Sum(m => m.MedalType == Models.MedalType.Silver ? m.Count : 0),
-                    c.Medals.Sum(m => m.MedalType == Models.MedalType.Bronze ? m.Count : 0)))
+                    c.Medals.Sum(m => m.Count),
+                    c.Medals.Where(m => m.MedalType == MedalType.Gold).Sum(m => m.Count),
+                    c.Medals.Where(m => m.MedalType == MedalType.Silver).Sum(m => m.Count),
+                    c.Medals.Where(m => m.MedalType == MedalType.Bronze).Sum(m => m.Count)))
                 .ToListAsync();
 
             return Ok(new { items, count });
         }
 
-        // GET /api/public/athletes/stats
-        // Same aggregate-shape principle as facility stats — grouped counts
-        // ready for direct charting, not raw per-record data.
         [HttpGet("athletes/stats")]
         public async Task<IActionResult> AthleteStats(int? year, string? provinceName)
         {
@@ -93,41 +74,33 @@ namespace Backend.Controllers
 
             var stats = await qs
                 .Select(a => new PublicAthleteStatDto(
-                    a.Federation.Name, a.City.Province.Name, a.City.Name,
+                    a.Federation.Name!, a.City.Province.Name, a.City.Name,
                     a.Year, a.Month, a.Gender.ToString(), a.Count))
                 .ToListAsync();
 
             return Ok(stats);
         }
 
-        // GET /api/public/federations
-        // A simple lookup list, needed so the public pages can offer a
-        // "filter by federation" dropdown without requiring login just to
-        // see which federations exist.
+        // Filtered to National level only — Province/City federations have
+        // no Name of their own and aren't meaningful choices for a public
+        // "filter by federation" dropdown anyway.
         [HttpGet("federations")]
         public async Task<IActionResult> Federations()
         {
             var federations = await _db.Federations
+                .Where(f => f.Level == FederationLevel.National)
                 .OrderBy(f => f.Name)
-                .Select(f => new { f.Id, f.Name, f.SportType })
+                .Select(f => new { f.Id, f.Name, Category = f.Category.ToString() })
                 .ToListAsync();
 
             return Ok(federations);
         }
 
-        // GET /api/public/provinces
-        // A minimal, unauthenticated lookup list — just enough to populate a
-        // filter dropdown on the public pages. Deliberately not reusing the
-        // authenticated ProvinceOutDto/endpoint, since keeping this controller's
-        // surface fully separate from the authenticated one is the same design
-        // principle the whole controller was built on: nothing here should ever
-        // accidentally depend on or leak into the authenticated side.
         [HttpGet("provinces")]
         public async Task<IActionResult> Provinces()
         {
             var provinces = await _db.Provinces
-                .OrderBy(p => p.Name)
-                .Select(p => new { p.Id, p.Name })
+                .OrderBy(p => p.Name).Select(p => new { p.Id, p.Name })
                 .ToListAsync();
 
             return Ok(provinces);

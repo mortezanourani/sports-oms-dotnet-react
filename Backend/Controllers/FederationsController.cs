@@ -4,106 +4,237 @@ using Microsoft.EntityFrameworkCore;
 using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
+using Backend.Extensions;
 
 namespace Backend.Controllers
 {
     [ApiController]
     [Route("api/federations")]
-    [Authorize]
+    [Authorize] // read access is open to any authenticated user; write actions are checked manually below
     public class FederationsController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
+        public FederationsController(ApplicationDbContext db) => _db = db;
 
-        public FederationsController(ApplicationDbContext db)
+        private static readonly string[] AllowedManagerRoles = { "Admin", "Manager", "SportOfficer" };
+
+        private bool HasAllowedRole() => AllowedManagerRoles.Contains(User.Role());
+
+        // Can this user manage a National-level federation? Only if their
+        // OWN scope is National — a Province- or City-scoped Admin/Manager/
+        // SportOfficer cannot touch the national federation itself, only
+        // their own region's entries under it.
+        private bool CanManageNational() => HasAllowedRole() && User.ScopeLevel() == "National";
+
+        // Can this user manage a Provincial federation for a given province?
+        private bool CanManageProvincial(Guid targetProvinceId)
         {
-            _db = db;
+            if (!HasAllowedRole()) return false;
+            var scope = User.ScopeLevel();
+            if (scope == "National") return true;
+            if (scope == "Province") return User.ScopeProvinceId() == targetProvinceId;
+            return false; // City-scoped users cannot manage province-level entries
         }
 
-        // GET /api/federations
-        // Open to any authenticated user, no role restriction. Federations are
-        // referenced everywhere (Champions, AthleteCount, User federation
-        // positions), so every role needs to be able to read this list to
-        // populate dropdowns — restricting read access here would break forms
-        // for roles that have nothing to do with managing federations directly.
+        // Can this user manage a City federation for a given city/province?
+        private bool CanManageCity(Guid targetCityId, Guid targetProvinceId)
+        {
+            if (!HasAllowedRole()) return false;
+            var scope = User.ScopeLevel();
+            if (scope == "National") return true;
+            if (scope == "Province") return User.ScopeProvinceId() == targetProvinceId;
+            if (scope == "City") return User.ScopeCityId() == targetCityId;
+            return false;
+        }
+
+        private static string ComposeDisplayName(Federation f)
+        {
+            if (f.Level == FederationLevel.National) return f.Name ?? "";
+            var parentName = f.ParentFederation?.Name ?? "";
+            var regionName = f.Level == FederationLevel.Provincial ? f.Province?.Name : f.City?.Name;
+            return $"{parentName} - {regionName}";
+        }
+
         [HttpGet]
-        public async Task<IActionResult> List()
+        public async Task<IActionResult> List(string? level, Guid? parentFederationId)
         {
-            var federations = await _db.Federations
-            .OrderBy(f => f.Name)
-            .Select(f => new FederationOutDto(f.Id, f.Name, f.SportType))
-            .ToListAsync();
+            var qs = _db.Federations
+                .Include(f => f.ParentFederation).Include(f => f.Province).Include(f => f.City)
+                .Include(f => f.ChildFederations)
+                .AsQueryable();
 
-            return Ok(federations);
+            if (!string.IsNullOrEmpty(level))
+            {
+                if (!Enum.TryParse<FederationLevel>(level, out var levelEnum))
+                    return BadRequest(new { detail = "سطح فدراسیون نامعتبر است" });
+                qs = qs.Where(f => f.Level == levelEnum);
+            }
+
+            if (parentFederationId.HasValue)
+                qs = qs.Where(f => f.ParentFederationId == parentFederationId.Value);
+            else if (string.IsNullOrEmpty(level))
+                qs = qs.Where(f => f.Level == FederationLevel.National);
+
+            var federations = await qs.OrderBy(f => f.Name ?? f.Province!.Name).ToListAsync();
+
+            var result = federations.Select(f => new FederationOutDto(
+                f.Id, ComposeDisplayName(f), f.Category.ToString(), f.Level.ToString(),
+                f.ParentFederationId, f.ParentFederation?.Name,
+                f.ProvinceId, f.Province?.Name, f.CityId, f.City?.Name,
+                f.ChildFederations.Any()));
+
+            return Ok(result);
         }
 
-        // GET /api/federations/{id}
         [HttpGet("{id}")]
         public async Task<IActionResult> Get(Guid id)
         {
-            var federation = await _db.Federations.FindAsync(id);
-            if (federation == null)
-                return NotFound(new { detail = "فدراسیون یافت نشد" });
+            var f = await _db.Federations
+                .Include(x => x.ParentFederation).Include(x => x.Province).Include(x => x.City).Include(x => x.ChildFederations)
+                .FirstOrDefaultAsync(x => x.Id == id);
 
-            return Ok(new FederationOutDto(federation.Id, federation.Name, federation.SportType));
+            if (f == null) return NotFound(new { detail = "فدراسیون یافت نشد" });
+
+            return Ok(new FederationOutDto(
+                f.Id, ComposeDisplayName(f), f.Category.ToString(), f.Level.ToString(),
+                f.ParentFederationId, f.ParentFederation?.Name,
+                f.ProvinceId, f.Province?.Name, f.CityId, f.City?.Name,
+                f.ChildFederations.Any()));
         }
 
-        // POST /api/federations
-        // Restricted to Admin/Manager, matching the role table's statement that
-        // only these two roles touch federation structure itself — the actual
-        // day-to-day sport-specific data (champions, medals, athlete counts)
-        // belongs to the specialized officer roles, but the federation *record*
-        // itself is closer to reference/organizational data, same category as
-        // Province/City.
         [HttpPost]
-        [Authorize(Roles = "Admin,Manager")]
         public async Task<IActionResult> Create(FederationCreateDto dto)
         {
-            var exists = await _db.Federations.AnyAsync(f => f.Name == dto.Name);
-            if (exists)
-                return Conflict(new { detail = "فدراسیونی با این نام قبلاً ثبت شده است" });
+            if (!Enum.TryParse<FederationLevel>(dto.Level, out var levelEnum))
+                return BadRequest(new { detail = "سطح فدراسیون نامعتبر است" });
 
-            var federation = new Federation { Name = dto.Name, SportType = dto.SportType };
-            _db.Federations.Add(federation);
-            await _db.SaveChangesAsync();
+            if (levelEnum == FederationLevel.National)
+            {
+                if (!CanManageNational())
+                    return Forbid("شما اجازه ایجاد فدراسیون کشوری را ندارید");
 
-            return CreatedAtAction(nameof(Get), new { id = federation.Id },
-            new FederationOutDto(federation.Id, federation.Name, federation.SportType));
+                if (string.IsNullOrWhiteSpace(dto.Name) || string.IsNullOrWhiteSpace(dto.Category))
+                    return BadRequest(new { detail = "نام و دسته‌بندی برای فدراسیون کشوری الزامی است" });
+                if (!Enum.TryParse<FederationCategory>(dto.Category, out var categoryEnum))
+                    return BadRequest(new { detail = "دسته‌بندی نامعتبر است" });
+                if (dto.ParentFederationId.HasValue || dto.ProvinceId.HasValue || dto.CityId.HasValue)
+                    return BadRequest(new { detail = "فدراسیون کشوری نباید والد، استان یا شهر داشته باشد" });
+
+                var duplicate = await _db.Federations.AnyAsync(f => f.Level == FederationLevel.National && f.Name == dto.Name);
+                if (duplicate) return Conflict(new { detail = "فدراسیون کشوری با این نام قبلاً ثبت شده است" });
+
+                var federation = new Federation { Name = dto.Name, Category = categoryEnum, Level = FederationLevel.National };
+                _db.Federations.Add(federation);
+                await _db.SaveChangesAsync();
+                return CreatedAtAction(nameof(Get), new { id = federation.Id }, new { id = federation.Id });
+            }
+
+            if (levelEnum == FederationLevel.Provincial)
+            {
+                if (!dto.ParentFederationId.HasValue || !dto.ProvinceId.HasValue)
+                    return BadRequest(new { detail = "انتخاب فدراسیون کشوری و استان الزامی است" });
+                if (dto.CityId.HasValue)
+                    return BadRequest(new { detail = "فدراسیون استانی نباید شهر داشته باشد" });
+
+                if (!CanManageProvincial(dto.ProvinceId.Value))
+                    return Forbid("شما اجازه ایجاد فدراسیون برای این استان را ندارید");
+
+                var parent = await _db.Federations.FindAsync(dto.ParentFederationId.Value);
+                if (parent == null || parent.Level != FederationLevel.National)
+                    return BadRequest(new { detail = "والد انتخاب‌شده باید یک فدراسیون کشوری معتبر باشد" });
+
+                if (!await _db.Provinces.AnyAsync(p => p.Id == dto.ProvinceId.Value))
+                    return BadRequest(new { detail = "استان انتخاب‌شده معتبر نیست" });
+
+                var duplicate = await _db.Federations.AnyAsync(f =>
+                    f.ParentFederationId == dto.ParentFederationId && f.ProvinceId == dto.ProvinceId);
+                if (duplicate) return Conflict(new { detail = "فدراسیون این استان قبلاً برای این رشته ثبت شده است" });
+
+                // Category is never taken from the client for non-National
+                // levels — it's always inherited directly from the parent,
+                // guaranteeing the match rather than merely validating it.
+                var federation = new Federation
+                {
+                    Category = parent.Category,
+                    Level = FederationLevel.Provincial,
+                    ParentFederationId = parent.Id,
+                    ProvinceId = dto.ProvinceId,
+                };
+                _db.Federations.Add(federation);
+                await _db.SaveChangesAsync();
+                return CreatedAtAction(nameof(Get), new { id = federation.Id }, new { id = federation.Id });
+            }
+
+            // City
+            {
+                if (!dto.ParentFederationId.HasValue || !dto.CityId.HasValue)
+                    return BadRequest(new { detail = "انتخاب فدراسیون استانی و شهر الزامی است" });
+                if (dto.ProvinceId.HasValue)
+                    return BadRequest(new { detail = "فدراسیون شهری نباید استان مستقیم داشته باشد" });
+
+                var city = await _db.Cities.FindAsync(dto.CityId.Value);
+                if (city == null) return BadRequest(new { detail = "شهر انتخاب‌شده معتبر نیست" });
+
+                if (!CanManageCity(dto.CityId.Value, city.ProvinceId))
+                    return Forbid("شما اجازه ایجاد فدراسیون برای این شهر را ندارید");
+
+                var parent = await _db.Federations.FindAsync(dto.ParentFederationId.Value);
+                if (parent == null || parent.Level != FederationLevel.Provincial)
+                    return BadRequest(new { detail = "والد انتخاب‌شده باید یک فدراسیون استانی معتبر باشد" });
+
+                if (city.ProvinceId != parent.ProvinceId)
+                    return BadRequest(new { detail = "شهر انتخاب‌شده متعلق به استان فدراسیون والد نیست" });
+
+                var duplicate = await _db.Federations.AnyAsync(f =>
+                    f.ParentFederationId == dto.ParentFederationId && f.CityId == dto.CityId);
+                if (duplicate) return Conflict(new { detail = "فدراسیون این شهر قبلاً برای این رشته ثبت شده است" });
+
+                var federation = new Federation
+                {
+                    Category = parent.Category,
+                    Level = FederationLevel.City,
+                    ParentFederationId = parent.Id,
+                    CityId = dto.CityId,
+                };
+                _db.Federations.Add(federation);
+                await _db.SaveChangesAsync();
+                return CreatedAtAction(nameof(Get), new { id = federation.Id }, new { id = federation.Id });
+            }
         }
 
-        // PUT /api/federations/{id}
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin,Manager")]
         public async Task<IActionResult> Update(Guid id, FederationUpdateDto dto)
         {
             var federation = await _db.Federations.FindAsync(id);
-            if (federation == null)
-                return NotFound(new { detail = "فدراسیون یافت نشد" });
+            if (federation == null) return NotFound(new { detail = "فدراسیون یافت نشد" });
+
+            if (federation.Level != FederationLevel.National)
+                return BadRequest(new { detail = "فقط فدراسیون کشوری قابل ویرایش نام است" });
+
+            if (!CanManageNational())
+                return Forbid("شما اجازه ویرایش این فدراسیون را ندارید");
 
             federation.Name = dto.Name;
-            federation.SportType = dto.SportType;
             await _db.SaveChangesAsync();
-
-            return Ok(new FederationOutDto(federation.Id, federation.Name, federation.SportType));
+            return Ok(new { success = true });
         }
 
-        // DELETE /api/federations/{id}
-        // Champion.FederationId uses DeleteBehavior.Restrict, so the database
-        // itself will refuse this delete if any Champion still references the
-        // federation. AthleteCount and FederationPosition also carry a
-        // FederationId, and although those two weren't explicitly given a
-        // Restrict rule in ApplicationDbContext, EF Core's *default* delete
-        // behavior for a required (non-nullable) foreign key is Cascade —
-        // meaning without an explicit override, deleting a Federation would
-        // silently delete every AthleteCount and FederationPosition row tied
-        // to it too. That's almost certainly not what you want for
-        // organizational/historical data, so this needs a fix before it ships.
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin,Manager")]
         public async Task<IActionResult> Delete(Guid id)
         {
-            var federation = await _db.Federations.FindAsync(id);
-            if (federation == null)
-                return NotFound(new { detail = "فدراسیون یافت نشد" });
+            var federation = await _db.Federations
+                .Include(f => f.Province).Include(f => f.City)
+                .FirstOrDefaultAsync(f => f.Id == id);
+            if (federation == null) return NotFound(new { detail = "فدراسیون یافت نشد" });
+
+            var allowed = federation.Level switch
+            {
+                FederationLevel.National => CanManageNational(),
+                FederationLevel.Provincial => CanManageProvincial(federation.ProvinceId!.Value),
+                FederationLevel.City => CanManageCity(federation.CityId!.Value, federation.City!.ProvinceId),
+                _ => false,
+            };
+            if (!allowed) return Forbid("شما اجازه حذف این فدراسیون را ندارید");
 
             try
             {
@@ -112,36 +243,10 @@ namespace Backend.Controllers
             }
             catch (DbUpdateException)
             {
-                return Conflict(new { detail = "این فدراسیون دارای اطلاعات وابسته است و قابل حذف نیست" });
-
+                return Conflict(new { detail = "این فدراسیون دارای زیرمجموعه یا اطلاعات وابسته است و قابل حذف نیست" });
             }
 
             return Ok(new { success = true });
-        }
-
-        // GET /api/federations/{id}/positions
-        // Full leadership history for one federation — every past and current
-        // President/Miss/Vice, reusing the same FederationPositionOutDto shape
-        // UsersController already returns, just queried from the opposite
-        // direction (by FederationId instead of UserId).
-        [HttpGet("{id}/positions")]
-        public async Task<IActionResult> GetPositions(Guid id)
-        {
-            var exists = await _db.Federations.AnyAsync(f => f.Id == id);
-            if (!exists) return NotFound(new { detail = "فدراسیون یافت نشد" });
-
-            var positions = await _db.FederationPositions
-                .Include(p => p.User)
-                .Include(p => p.Federation)
-                .Where(p => p.FederationId == id)
-                .OrderByDescending(p => p.StartDate)
-                .Select(p => new FederationPositionOutDto(
-                    p.Id, p.Position.ToString(), p.StartDate, p.EndDate,
-                    p.UserId, p.User.FirstName!, p.User.LastName!,
-                    p.FederationId, p.Federation.Name))
-                .ToListAsync();
-
-            return Ok(positions);
         }
     }
 }
