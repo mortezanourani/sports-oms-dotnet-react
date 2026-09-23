@@ -77,7 +77,6 @@ export default function FederationsList() {
 
             <Table
                 rowKey="id" columns={columns} dataSource={federations} loading={isLoading} pagination={false}
-                expandable={{ expandedRowRender: (record) => <ProvincialFederationsPanel nationalFederation={record} /> }}
             />
 
             <Modal
