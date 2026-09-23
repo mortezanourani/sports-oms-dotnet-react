@@ -23,7 +23,7 @@ namespace Backend.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> List(Guid? federationId, int page = 1, int pageSize = 20)
+        public async Task<IActionResult> List(Guid? federationId, Guid? provinceId, Guid? cityId, int page = 1, int pageSize = 20)
         {
             var qs = _db.Champions
                 .Include(c => c.Federation)
@@ -34,6 +34,9 @@ namespace Backend.Controllers
             if (federationId.HasValue)
                 qs = qs.Where(c => c.FederationId == federationId.Value);
 
+            if (cityId.HasValue) qs = qs.Where(c => c.CityId == cityId.Value);
+            else if (provinceId.HasValue) qs = qs.Where(c => c.City != null && c.City.ProvinceId == provinceId.Value);
+            
             qs = _scope.FilterChampions(qs, User);
 
             var count = await qs.CountAsync();

@@ -28,13 +28,13 @@ namespace Backend.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> List(string? facilityType, int page = 1, int pageSize = 20)
+        public async Task<IActionResult> List(string? facilityType, Guid? provinceId, Guid? cityId, int page = 1, int pageSize = 20)
         {
             var qs = _db.Facilities
                 .Include(f => f.City)
                     .ThenInclude(c => c.Province)
                 .AsQueryable();
-
+            
             if (!string.IsNullOrEmpty(facilityType))
             {
                 if (!Enum.TryParse<FacilityType>(facilityType, out var facilityTypeEnum))
@@ -43,6 +43,9 @@ namespace Backend.Controllers
                 qs = qs.Where(f => f.FacilityType == facilityTypeEnum);
             }
 
+            if (cityId.HasValue) qs = qs.Where(f => f.CityId == cityId.Value);
+            else if (provinceId.HasValue) qs = qs.Where(f => f.City.ProvinceId == provinceId.Value);
+            
             qs = _scope.FilterFacilities(qs, User);
 
             var count = await qs.CountAsync();

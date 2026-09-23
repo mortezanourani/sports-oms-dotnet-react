@@ -24,7 +24,7 @@ namespace Backend.Controllers
 
         [HttpGet]
         public async Task<IActionResult> List(
-            Guid? federationId, int? year, string? gender, int page = 1, int pageSize = 20)
+            Guid? federationId, int? year, string? gender, Guid? provinceId, Guid? cityId, int page = 1, int pageSize = 20)
         {
             var qs = _db.AthleteCounts
                 .Include(a => a.Federation)
@@ -41,6 +41,9 @@ namespace Backend.Controllers
                 qs = qs.Where(a => a.Gender == genderEnum);
             }
 
+            if (cityId.HasValue) qs = qs.Where(a => a.CityId == cityId.Value);
+            else if (provinceId.HasValue) qs = qs.Where(a => a.City.ProvinceId == provinceId.Value);
+            
             qs = _scope.FilterAthleteCounts(qs, User);
 
             var count = await qs.CountAsync();

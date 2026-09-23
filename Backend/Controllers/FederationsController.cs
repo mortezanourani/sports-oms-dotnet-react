@@ -56,7 +56,7 @@ namespace Backend.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> List(string? level, Guid? parentFederationId)
+        public async Task<IActionResult> List(string? level, Guid? parentFederationId, Guid? provinceId, Guid? cityId)
         {
             var qs = _db.Federations
                 .Include(f => f.ParentFederation).Include(f => f.Province).Include(f => f.City)
@@ -70,6 +70,9 @@ namespace Backend.Controllers
                 qs = qs.Where(f => f.Level == levelEnum);
             }
 
+            if (cityId.HasValue) qs = qs.Where(f => f.CityId == cityId.Value);
+            else if (provinceId.HasValue) qs = qs.Where(f => f.ProvinceId == provinceId.Value);
+            
             if (parentFederationId.HasValue)
                 qs = qs.Where(f => f.ParentFederationId == parentFederationId.Value);
             else if (string.IsNullOrEmpty(level))
