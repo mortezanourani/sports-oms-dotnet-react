@@ -61,9 +61,6 @@ export default function FederationsList() {
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
                 <Title level={4}>فدراسیون‌ها</Title>
-                {canManageNational(geo.auth) && (
-                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>افزودن فدراسیون کشوری</Button>
-                )}
             </div>
             <Tabs items={items} />
             <FederationFormModal level="National" open={createOpen} onClose={() => setCreateOpen(false)} />

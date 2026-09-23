@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Modal, Form, Input, Select, message } from 'antd';
-import { useCreateFederation } from '../../../hooks/useFederations';
+import { useCreateFederation, useFederations } from '../../../hooks/useFederations';
 import { useProvinces, useCities } from '../../../hooks/useLocations';
 import { useAuth } from '../../../hooks/useAuth';
 import { FEDERATION_CATEGORY_LABELS } from '../../../constants/labels';
 
-// level: 'National' | 'Provincial' | 'City'
-// parentFederation: the National federation (for Provincial) or the
-// Provincial federation (for City) this new one will be created under —
-// undefined when level === 'National'.
-export default function FederationFormModal({ level, parentFederation, open, onClose }) {
+// parentFederation: pass this when the parent is already known (nested
+// Mastery-tab usage). Omit it entirely for flat-table usage — the modal
+// then renders its own parent-selection dropdown instead.
+// targetProvinceId / targetCityId: the already-selected province/city
+// from the flat table's own selector, used directly instead of asking
+// the user to pick it again inside this modal.
+export default function FederationFormModal({ level, parentFederation, targetProvinceId, targetCityId, open, onClose }) {
     const [form] = Form.useForm();
     const auth = useAuth();
     const [selectedProvinceId, setSelectedProvinceId] = useState(null);
@@ -17,44 +19,50 @@ export default function FederationFormModal({ level, parentFederation, open, onC
     const { data: provinces } = useProvinces();
     const { data: cities } = useCities(selectedProvinceId);
 
-    // Restricts the province dropdown to what THIS user is actually allowed
-    // to create in — a Province-scoped user only ever sees their own
-    // province as an option, rather than a full list they'd only get a 403
-    // from the backend for picking anything else in.
+    const needsParentPicker = !parentFederation && level !== 'National';
+
+    // Only fetched when actually needed — a Provincial-level modal needs
+    // National federations to choose from; a City-level modal needs
+    // Provincial federations scoped to the already-known province.
+    const { data: nationalOptions } = useFederations(
+        needsParentPicker && level === 'Provincial' ? { level: 'National' } : undefined
+    );
+    const { data: provincialOptions } = useFederations(
+        needsParentPicker && level === 'City' ? { level: 'Provincial', provinceId: targetProvinceId } : undefined
+    );
+
     const provinceOptions =
-        auth.scopeLevel === 'Province'
-            ? provinces?.filter((p) => p.id === auth.scopeProvinceId)
-            : provinces;
+        auth.scopeLevel === 'Province' ? provinces?.filter((p) => p.id === auth.scopeProvinceId) : provinces;
+    const cityOptions =
+        auth.scopeLevel === 'City' ? cities?.filter((c) => c.id === auth.scopeCityId) : cities;
 
     useEffect(() => {
-        if (open && level === 'Provincial' && auth.scopeLevel === 'Province') {
+        if (open && level === 'Provincial' && !parentFederation && auth.scopeLevel === 'Province') {
+            form.setFieldValue('provinceId', auth.scopeProvinceId);
+            setSelectedProvinceId(auth.scopeProvinceId);
+        }
+        if (open && level === 'Provincial' && parentFederation && auth.scopeLevel === 'Province') {
             form.setFieldValue('provinceId', auth.scopeProvinceId);
             setSelectedProvinceId(auth.scopeProvinceId);
         }
         if (open && level === 'City') {
-            // For City creation, the province is always implied by the parent
-            // Provincial federation — never a free choice, so the city dropdown
-            // is scoped immediately without waiting for a province selection.
-            setSelectedProvinceId(parentFederation?.provinceId);
-            if (auth.scopeLevel === 'City') {
-                form.setFieldValue('cityId', auth.scopeCityId);
-            }
+            const province = parentFederation?.provinceId ?? targetProvinceId;
+            setSelectedProvinceId(province);
+            if (auth.scopeLevel === 'City') form.setFieldValue('cityId', auth.scopeCityId);
+            else if (targetCityId) form.setFieldValue('cityId', targetCityId);
         }
-    }, [open, level, auth, parentFederation, form]);
-
-    const cityOptions =
-        auth.scopeLevel === 'City'
-            ? cities?.filter((c) => c.id === auth.scopeCityId)
-            : cities;
+    }, [open, level, parentFederation, targetProvinceId, targetCityId, auth, form]);
 
     const handleFinish = async (values) => {
         let payload;
         if (level === 'National') {
             payload = { level: 'National', name: values.name, category: values.category };
         } else if (level === 'Provincial') {
-            payload = { level: 'Provincial', parentFederationId: parentFederation.id, provinceId: values.provinceId };
+            const parentId = parentFederation ? parentFederation.id : values.parentFederationId;
+            payload = { level: 'Provincial', parentFederationId: parentId, provinceId: values.provinceId };
         } else {
-            payload = { level: 'City', parentFederationId: parentFederation.id, cityId: values.cityId };
+            const parentId = parentFederation ? parentFederation.id : values.parentFederationId;
+            payload = { level: 'City', parentFederationId: parentId, cityId: values.cityId };
         }
 
         try {
@@ -69,8 +77,12 @@ export default function FederationFormModal({ level, parentFederation, open, onC
 
     const titles = {
         National: 'افزودن فدراسیون کشوری',
-        Provincial: `افزودن فدراسیون استانی زیرمجموعه «${parentFederation?.displayName}»`,
-        City: `افزودن فدراسیون شهری زیرمجموعه «${parentFederation?.displayName}»`,
+        Provincial: parentFederation
+            ? `افزودن فدراسیون استانی زیرمجموعه «${parentFederation.displayName}»`
+            : 'افزودن فدراسیون استانی',
+        City: parentFederation
+            ? `افزودن فدراسیون شهری زیرمجموعه «${parentFederation.displayName}»`
+            : 'افزودن فدراسیون شهری',
     };
 
     return (
@@ -96,6 +108,14 @@ export default function FederationFormModal({ level, parentFederation, open, onC
                     </>
                 )}
 
+                {level === 'Provincial' && needsParentPicker && (
+                    <Form.Item name="parentFederationId" label="فدراسیون کشوری" rules={[{ required: true }]}>
+                        <Select
+                            placeholder="انتخاب رشته"
+                            options={nationalOptions?.map((f) => ({ value: f.id, label: f.displayName }))}
+                        />
+                    </Form.Item>
+                )}
                 {level === 'Provincial' && (
                     <Form.Item name="provinceId" label="استان" rules={[{ required: true }]}>
                         <Select
@@ -106,10 +126,19 @@ export default function FederationFormModal({ level, parentFederation, open, onC
                     </Form.Item>
                 )}
 
+                {level === 'City' && needsParentPicker && (
+                    <Form.Item name="parentFederationId" label="فدراسیون استانی" rules={[{ required: true }]}>
+                        <Select
+                            placeholder={!selectedProvinceId ? 'ابتدا استان را انتخاب کنید' : 'انتخاب رشته'}
+                            disabled={!selectedProvinceId}
+                            options={provincialOptions?.map((f) => ({ value: f.id, label: f.displayName }))}
+                        />
+                    </Form.Item>
+                )}
                 {level === 'City' && (
                     <Form.Item name="cityId" label="شهر" rules={[{ required: true }]}>
                         <Select
-                            disabled={auth.scopeLevel === 'City'}
+                            disabled={auth.scopeLevel === 'City' || !!targetCityId}
                             options={cityOptions?.map((c) => ({ value: c.id, label: c.name }))}
                         />
                     </Form.Item>
