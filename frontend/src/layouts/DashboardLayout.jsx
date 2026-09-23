@@ -41,16 +41,6 @@ export default function DashboardLayout() {
         { key: 'athletes', icon: <HomeOutlined />, label: <Link to="/dashboard/athletes">آمار ورزشکاران</Link> },
         { key: 'locations', icon: <EnvironmentOutlined />, label: <Link to="/dashboard/locations">استان‌ها و شهرها</Link> },
         { key: 'users', icon: <TeamOutlined />, label: <Link to="/dashboard/users">کاربران</Link> },
-        {
-            key: 'messages', icon: <MessageOutlined />,
-            label: (
-                <Link to="/dashboard/messages">
-                    <Badge count={unreadData?.unreadCount} size="small" offset={[10, 0]}>
-                        پیام‌ها
-                    </Badge>
-                </Link>
-            ),
-        }
     ];
 
     const allowedKeys = ROLE_MENU[role] || [];
@@ -72,7 +62,14 @@ export default function DashboardLayout() {
             <Layout>
                 <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Text strong>{fullName}</Text>
-                    <Button icon={<LogoutOutlined />} onClick={handleLogout}>خروج</Button>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                        <Link to="/dashboard/messages">
+                            <Badge count={unreadData?.unreadCount} size="small" offset={[10, 0]}>
+                                <Button icon={<MessageOutlined />}>پیام‌ها</Button>
+                            </Badge>
+                        </Link>
+                        <Button icon={<LogoutOutlined />} onClick={handleLogout} danger>خروج</Button>
+                    </div>
                 </Header>
                 <Content style={{ margin: 24 }}>
                     <Outlet />
