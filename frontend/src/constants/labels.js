@@ -36,25 +36,26 @@ export const PERSIAN_MONTHS = [
 ];
 
 export const ROLE_LABELS = {
-  Admin: 'مدیر کل',
+  Admin: 'مدیر سامانه',
   Manager: 'مدیر',
   M88Officer: 'کارشناس M88',
   M5Officer: 'کارشناس M5',
   InsuranceOfficer: 'کارشناس بیمه',
   SportOfficer: 'کارشناس ورزش',
-  FederationRep: 'نماینده فدراسیون'
+  FederationRep: 'نماینده فدراسیون/هیات'
 };
 
 export const SCOPE_LEVEL_LABELS = {
-  National: 'کشوری',
-  Province: 'استانی',
-  City: 'شهری'
+  National: 'وزارت',
+  Province: 'اداره کل',
+  City: 'شهرستان'
 };
 
 export const FEDERATION_CATEGORY_LABELS = {
+    Unknow: '-',
     Championships: 'قهرمانی',
     Para: 'پارا',
-    General: 'عمومی'
+    General: 'همگانی'
 };
 
 export const FEDERATION_LEVEL_LABELS = {

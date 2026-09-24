@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, Link } from 'react-router-dom';
-import { Layout, Menu, Button, Typography, Badge } from 'antd';
+import { Layout, Menu, Button, Typography, Badge, Space } from 'antd';
 import {
     HomeOutlined, TeamOutlined, TrophyOutlined, BankOutlined,
     EnvironmentOutlined, MessageOutlined, LogoutOutlined,
@@ -36,11 +36,11 @@ export default function DashboardLayout() {
     const { data: unreadData } = useUnreadCount();
     const ALL_MENU_ITEMS = [
         { key: 'facilities', icon: <BankOutlined />, label: <Link to="/dashboard/facilities">اماکن ورزشی</Link> },
-        { key: 'champions', icon: <TrophyOutlined />, label: <Link to="/dashboard/champions">قهرمانان</Link> },
-        { key: 'federations', icon: <TeamOutlined />, label: <Link to="/dashboard/federations">فدراسیون‌ها</Link> },
-        { key: 'athletes', icon: <HomeOutlined />, label: <Link to="/dashboard/athletes">آمار ورزشکاران</Link> },
+        { key: 'champions', icon: <TrophyOutlined />, label: <Link to="/dashboard/champions">مدال‌آوران</Link> },
+        { key: 'federations', icon: <TeamOutlined />, label: <Link to="/dashboard/federations">فدراسیون‌ها/هیات‌ها</Link> },
+        { key: 'athletes', icon: <HomeOutlined />, label: <Link to="/dashboard/athletes">ورزشکاران سازمان‌یافته</Link> },
         { key: 'locations', icon: <EnvironmentOutlined />, label: <Link to="/dashboard/locations">استان‌ها و شهرها</Link> },
-        { key: 'users', icon: <TeamOutlined />, label: <Link to="/dashboard/users">کاربران</Link> },
+        { key: 'users', icon: <TeamOutlined />, label: <Link to="/dashboard/users">امور اداری</Link> },
     ];
 
     const allowedKeys = ROLE_MENU[role] || [];
@@ -53,7 +53,7 @@ export default function DashboardLayout() {
 
     return (
         <Layout style={{ minHeight: '100vh' }}>
-            <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed}>
+            <Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} width={'240px'}>
                 <div style={{ color: 'white', textAlign: 'center', padding: 16, fontWeight: 'bold' }}>
                     {collapsed ? 'پنل' : 'پنل مدیریت'}
                 </div>
@@ -62,14 +62,14 @@ export default function DashboardLayout() {
             <Layout>
                 <Header style={{ background: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Text strong>{fullName}</Text>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                    <Space>
                         <Link to="/dashboard/messages">
                             <Badge count={unreadData?.unreadCount} size="small" offset={[10, 0]}>
                                 <Button icon={<MessageOutlined />}>پیام‌ها</Button>
                             </Badge>
                         </Link>
                         <Button icon={<LogoutOutlined />} onClick={handleLogout} danger>خروج</Button>
-                    </div>
+                    </Space>
                 </Header>
                 <Content style={{ margin: 24 }}>
                     <Outlet />
