@@ -11,9 +11,13 @@ import { useProvinces, useCities } from '../../../hooks/useLocations';
 import { useAuth } from '../../../hooks/useAuth';
 import { ROLE_LABELS, SCOPE_LEVEL_LABELS } from '../../../constants/labels';
 import AssignPositionModal from './AssignPositionModal';
+import {useGeoSections} from "../../../hooks/useGeoSections.js";
 
 export default function UsersList({ filters }) {
+  const geo = useGeoSections();
+
   const { role: myRole } = useAuth();
+  const isAdmin = ['Admin'].includes(myRole);
   const canManage = ['Admin', 'Manager'].includes(myRole);
   // Manager can view this page (matches the backend's [Authorize(Roles =
   // "Admin,Manager")] on List/Get), but every write action is Admin-only
@@ -99,7 +103,7 @@ export default function UsersList({ filters }) {
     { title: 'نام', dataIndex: 'firstName' },
     { title: 'نام خانوادگی', dataIndex: 'lastName' },
     { title: 'نقش', dataIndex: 'role', render: (v) => <Tag>{ROLE_LABELS[v] || v}</Tag> },
-    { title: 'سطح دسترسی', dataIndex: 'scopeLevel', render: (v) => SCOPE_LEVEL_LABELS[v] || v },
+    /*{ title: 'سطح دسترسی', dataIndex: 'scopeLevel', render: (v) => SCOPE_LEVEL_LABELS[v] || v },*/
     { title: 'استان', dataIndex: 'scopeProvinceName', render: (v) => v || '—' },
     { title: 'شهر', dataIndex: 'scopeCityName', render: (v) => v || '—' },
     {
@@ -162,11 +166,15 @@ export default function UsersList({ filters }) {
             </Form.Item>
           </Space>
           <Form.Item name="role" label="نقش" rules={[{ required: true }]}>
-            <Select options={Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }))} />
+            <Select options={Object.entries(ROLE_LABELS)
+                .filter( ([value]) => !isAdmin ? value !== 'Admin' : true)
+                .map(([value, label]) => ({ value, label }))} />
           </Form.Item>
           <Form.Item name="scopeLevel" label="سطح دسترسی جغرافیایی" rules={[{ required: true }]}>
             <Select
-              options={Object.entries(SCOPE_LEVEL_LABELS).map(([value, label]) => ({ value, label }))}
+              options={Object.entries(SCOPE_LEVEL_LABELS)
+                  .filter(([value]) => geo.provinceLocked ? value !== 'National' : true)
+                  .map(([value, label]) => ({ value, label }))}
               onChange={(val) => {
                 setScopeLevel(val);
                 form.setFieldValue('scopeProvinceId', undefined);
