@@ -1,8 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as api from '../api/users';
 
-export function useUsers() {
-  return useQuery({ queryKey: ['users'], queryFn: api.getUsers });
+export function useUsers(params) {
+  return useQuery({
+    queryKey: ['users', params],
+    queryFn: () => api.getUsers(params)
+  });
 }
 
 export function useUser(id) {
