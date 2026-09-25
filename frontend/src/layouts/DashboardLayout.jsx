@@ -20,7 +20,7 @@ const { Text } = Typography;
 // this object says.
 const ROLE_MENU = {
     Admin: ['facilities', 'champions', 'federations', 'athletes', 'locations', 'users', 'messages'],
-    Manager: ['facilities', 'champions', 'federations', 'athletes', 'locations', 'users', 'messages'],
+    Manager: ['facilities', 'champions', 'federations', 'athletes', 'users', 'messages'],
     M88Officer: ['facilities', 'messages'],
     M5Officer: ['facilities', 'messages'],
     InsuranceOfficer: ['athletes', 'messages'],
@@ -28,9 +28,14 @@ const ROLE_MENU = {
     FederationRep: ['messages'],
 };
 
+const SCOPE_RESTRICTION = {
+    Mastery: [],
+    Province: ['locations'],
+    City: ['locations', 'users'],
+}
 export default function DashboardLayout() {
     const [collapsed, setCollapsed] = useState(false);
-    const { role, fullName } = useAuth();
+    const { role, scopeLevel, fullName } = useAuth();
     const navigate = useNavigate();
 
     const { data: unreadData } = useUnreadCount();
@@ -44,7 +49,15 @@ export default function DashboardLayout() {
     ];
 
     const allowedKeys = ROLE_MENU[role] || [];
-    const visibleItems = ALL_MENU_ITEMS.filter((item) => allowedKeys.includes(item.key));
+    const notAllowedKeys = SCOPE_RESTRICTION[scopeLevel] || [];
+    const roleItems = ALL_MENU_ITEMS
+        .filter((item) =>
+            allowedKeys.includes(item.key)
+        );
+    const visibleItems = roleItems
+        .filter((item) =>
+            !notAllowedKeys.includes(item.key)
+        );
 
     const handleLogout = () => {
         logout();
