@@ -5,12 +5,13 @@ using Microsoft.EntityFrameworkCore;
 using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
+using Backend.Extensions;
 
 namespace Backend.Controllers
 {
     [ApiController]
     [Route("api/users")]
-    [Authorize]
+    [Authorize(Roles = "Admin,Manager")] // role gate stays the same; scope gate is method-body logic below
     public class UsersController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -22,66 +23,112 @@ namespace Backend.Controllers
             _userManager = userManager;
         }
 
-        // GET /api/users
-        // Admin and Manager can both view the user list (Manager has visibility
-        // into "all sections" per the role table — it just can't create/assign).
-        [HttpGet]
-        [Authorize(Roles = "Admin,Manager")]
-        public async Task<IActionResult> List()
+        // Admin and Manager are now fully symmetric for user management —
+        // the only remaining difference between them lives elsewhere
+        // (federation position assignment stays Admin-only, unchanged
+        // below). This single method is the real authorization boundary
+        // for create/edit/deactivate, replacing the old flat "Admin only"
+        // rule with a scope-aware one.
+        private bool CanManageTargetScope(string targetScopeLevel, Guid? targetProvinceId, Guid? targetCityId)
         {
-            var users = await _db.Users
-            .Include(u => u.ScopeProvince)
-            .Include(u => u.ScopeCity)
-            .OrderBy(u => u.UserName)
-            .Select(u => new UserOutDto(
-            u.Id, u.UserName!, u.FirstName ?? "", u.LastName ?? "", u.Role.ToString(), u.ScopeLevel.ToString(),
-            u.ScopeProvinceId, u.ScopeProvince != null ? u.ScopeProvince.Name : null,
-            u.ScopeCityId, u.ScopeCity != null ? u.ScopeCity.Name : null))
-            .ToListAsync();
+            var myScope = User.ScopeLevel();
+
+            if (myScope == "National") return true;
+
+            if (myScope == "Province")
+            {
+                if (targetScopeLevel == "National") return false;
+                // Both Province- and City-scoped target users carry their
+                // own ScopeProvinceId directly (set at creation time), so
+                // no extra City lookup is needed here to find "which
+                // province does this city belong to" — it's already on
+                // the record.
+                return targetProvinceId == User.ScopeProvinceId();
+            }
+
+            if (myScope == "City")
+            {
+                return targetScopeLevel == "City" && targetCityId == User.ScopeCityId();
+            }
+
+            return false;
+        }
+
+        private Guid CurrentUserId => Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+
+        // GET /api/users?scopeLevel=&provinceId=&cityId=
+        // scopeLevel/provinceId/cityId here drive the three dashboard tabs
+        // (Mastery/Province/City). Independent of those params, every
+        // result is ALSO filtered to what the caller's own scope permits —
+        // the tab filters are a UI convenience, the scope filter below is
+        // the actual security boundary, applied regardless of what the
+        // client asks for.
+        [HttpGet]
+        public async Task<IActionResult> List(string? scopeLevel, Guid? provinceId, Guid? cityId)
+        {
+            var qs = _db.Users.Include(u => u.ScopeProvince).Include(u => u.ScopeCity).AsQueryable();
+
+            if (!string.IsNullOrEmpty(scopeLevel)) qs = qs.Where(u => u.ScopeLevel.ToString() == scopeLevel);
+            if (cityId.HasValue) qs = qs.Where(u => u.ScopeCityId == cityId.Value);
+            else if (provinceId.HasValue) qs = qs.Where(u => u.ScopeProvinceId == provinceId.Value);
+
+            var myScope = User.ScopeLevel();
+            if (myScope == "Province")
+            {
+                var myProvinceId = User.ScopeProvinceId();
+                qs = qs.Where(u => u.ScopeLevel != ScopeLevel.National && u.ScopeProvinceId == myProvinceId);
+            }
+            else if (myScope == "City")
+            {
+                var myCityId = User.ScopeCityId();
+                qs = qs.Where(u => u.ScopeLevel == ScopeLevel.City && u.ScopeCityId == myCityId);
+            }
+            // National scope: no additional restriction beyond the explicit query params above.
+
+            var users = await qs
+                .OrderBy(u => u.UserName)
+                .Select(u => new UserOutDto(
+                    u.Id, u.UserName!, u.FirstName ?? "", u.LastName ?? "", u.Role.ToString(), u.ScopeLevel.ToString(),
+                    u.ScopeProvinceId, u.ScopeProvince != null ? u.ScopeProvince.Name : null,
+                    u.ScopeCityId, u.ScopeCity != null ? u.ScopeCity.Name : null))
+                .ToListAsync();
 
             return Ok(users);
         }
 
-        // GET /api/users/{id}
         [HttpGet("{id}")]
-        [Authorize(Roles = "Admin,Manager")]
         public async Task<IActionResult> Get(Guid id)
         {
-            var u = await _db.Users
-            .Include(x => x.ScopeProvince)
-            .Include(x => x.ScopeCity)
-            .FirstOrDefaultAsync(x => x.Id == id);
-
+            var u = await _db.Users.Include(x => x.ScopeProvince).Include(x => x.ScopeCity)
+                .FirstOrDefaultAsync(x => x.Id == id);
             if (u == null) return NotFound(new { detail = "کاربر یافت نشد" });
 
+            if (!CanManageTargetScope(u.ScopeLevel.ToString(), u.ScopeProvinceId, u.ScopeCityId))
+                return Forbid("شما اجازه مشاهده این کاربر را ندارید");
+
             return Ok(new UserOutDto(
-            u.Id, u.UserName!, u.FirstName ?? "", u.LastName ?? "", u.Role.ToString(), u.ScopeLevel.ToString(),
-            u.ScopeProvinceId, u.ScopeProvince?.Name, u.ScopeCityId, u.ScopeCity?.Name));
+                u.Id, u.UserName!, u.FirstName ?? "", u.LastName ?? "", u.Role.ToString(), u.ScopeLevel.ToString(),
+                u.ScopeProvinceId, u.ScopeProvince?.Name, u.ScopeCityId, u.ScopeCity?.Name));
         }
 
-        // POST /api/users
-        // Admin only — this is explicitly called out in the role table
-        // ("Manager ... can't create users"), so this is the one place in the
-        // whole API where the role restriction is a single fixed value, not a list.
         [HttpPost]
-        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Create(UserCreateDto dto)
         {
             if (!Enum.TryParse<UserRole>(dto.Role, out var roleEnum))
                 return BadRequest(new { detail = "نقش انتخاب‌شده معتبر نیست" });
-
             if (!Enum.TryParse<ScopeLevel>(dto.ScopeLevel, out var scopeLevelEnum))
                 return BadRequest(new { detail = "سطح دسترسی جغرافیایی معتبر نیست" });
 
+            if (!CanManageTargetScope(dto.ScopeLevel, dto.ScopeProvinceId, dto.ScopeCityId))
+                return Forbid("شما اجازه ایجاد کاربر در این سطح دسترسی را ندارید");
+
             var scopeError = await ValidateScopeAsync(scopeLevelEnum, dto.ScopeProvinceId, dto.ScopeCityId);
-            if (scopeError != null)
-                return BadRequest(new { detail = scopeError });
+            if (scopeError != null) return BadRequest(new { detail = scopeError });
 
             var user = new ApplicationUser
             {
                 UserName = dto.Username,
-                Email = $"{dto.Username}@local", // Identity requires an email; a placeholder domain is fine
-                                                 // since this app authenticates by username, not email
+                Email = $"{dto.Username}@local",
                 FirstName = dto.FirstName,
                 LastName = dto.LastName,
                 Role = roleEnum,
@@ -94,38 +141,41 @@ namespace Backend.Controllers
             var result = await _userManager.CreateAsync(user, dto.Password);
             if (!result.Succeeded)
             {
-                // Identity returns its own list of password/username validation errors
-                // (too short, no digit, username taken, etc.) — surface them directly
-                // rather than a generic failure message, since they're already
-                // specific and actionable for whoever is filling out the form.
                 var errors = string.Join(" / ", result.Errors.Select(e => e.Description));
                 return BadRequest(new { detail = errors });
             }
 
             return CreatedAtAction(nameof(Get), new { id = user.Id },
-            new UserOutDto(user.Id, user.UserName!, user.FirstName ?? "", user.LastName ?? "", user.Role.ToString(),
-            user.ScopeLevel.ToString(), user.ScopeProvinceId, null, user.ScopeCityId, null));
+                new UserOutDto(user.Id, user.UserName!, user.FirstName ?? "", user.LastName ?? "", user.Role.ToString(),
+                    user.ScopeLevel.ToString(), user.ScopeProvinceId, null, user.ScopeCityId, null));
         }
 
-        // PUT /api/users/{id}
-        // Also Admin only — updating someone's role or geographic scope is just
-        // as sensitive as creating the account in the first place.
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Update(Guid id, UserUpdateDto dto)
         {
             var user = await _db.Users.FindAsync(id);
             if (user == null) return NotFound(new { detail = "کاربر یافت نشد" });
 
+            // Checked against the user's CURRENT scope first — a caller
+            // must already be allowed to manage this person before
+            // touching them at all.
+            if (!CanManageTargetScope(user.ScopeLevel.ToString(), user.ScopeProvinceId, user.ScopeCityId))
+                return Forbid("شما اجازه ویرایش این کاربر را ندارید");
+
             if (!Enum.TryParse<UserRole>(dto.Role, out var roleEnum))
                 return BadRequest(new { detail = "نقش انتخاب‌شده معتبر نیست" });
-
             if (!Enum.TryParse<ScopeLevel>(dto.ScopeLevel, out var scopeLevelEnum))
                 return BadRequest(new { detail = "سطح دسترسی جغرافیایی معتبر نیست" });
 
+            // ALSO checked against the proposed NEW scope — otherwise a
+            // Province admin could edit someone already within their
+            // jurisdiction and "promote" them to National scope, escaping
+            // the province admin's own authority entirely.
+            if (!CanManageTargetScope(dto.ScopeLevel, dto.ScopeProvinceId, dto.ScopeCityId))
+                return Forbid("شما اجازه انتقال این کاربر به این سطح دسترسی را ندارید");
+
             var scopeError = await ValidateScopeAsync(scopeLevelEnum, dto.ScopeProvinceId, dto.ScopeCityId);
-            if (scopeError != null)
-                return BadRequest(new { detail = scopeError });
+            if (scopeError != null) return BadRequest(new { detail = scopeError });
 
             user.FirstName = dto.FirstName;
             user.LastName = dto.LastName;
@@ -138,21 +188,14 @@ namespace Backend.Controllers
             return Ok(new { success = true });
         }
 
-        // DELETE /api/users/{id}
-        // Uses Identity's lockout mechanism instead of actually deleting the row.
-        // Reasoning: this user may be referenced as the `sender` or a `recipient`
-        // of existing Messages, or as the historical holder of a FederationPosition.
-        // A hard delete would either fail (if any relation uses Restrict) or
-        // silently erase "who sent this report" from historical records — neither
-        // is acceptable for what's meant to be an audit-relevant system. Locking
-        // the account out achieves the same practical goal ("this person can no
-        // longer log in or act") without destroying history.
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Deactivate(Guid id)
         {
             var user = await _userManager.FindByIdAsync(id.ToString());
             if (user == null) return NotFound(new { detail = "کاربر یافت نشد" });
+
+            if (!CanManageTargetScope(user.ScopeLevel.ToString(), user.ScopeProvinceId, user.ScopeCityId))
+                return Forbid("شما اجازه غیرفعال‌سازی این کاربر را ندارید");
 
             await _userManager.SetLockoutEnabledAsync(user, true);
             await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
@@ -160,21 +203,17 @@ namespace Backend.Controllers
             return Ok(new { success = true });
         }
 
-        // POST /api/users/{id}/federation-position
-        // Assigns a user as a federation's president/miss/vice. Admin only,
-        // per the role table's explicit "Manager ... can't assign any
-        // presidents/vices" restriction.
-        //
-        // Before inserting the new position row, this closes out whoever
-        // currently holds that exact position (same federation, same position
-        // type, EndDate still null) by setting their EndDate to the new
-        // person's start date. This is what preserves full history — the old
-        // holder's row stays in the table forever as a record of "who held
-        // this position and for how long," rather than being overwritten.
+        // Federation position assignment intentionally stays Admin-only,
+        // with no scope-based expansion — this wasn't part of what you
+        // asked to change, so I left it exactly as it was rather than
+        // assuming it should follow the same new pattern. Worth revisiting
+        // deliberately later if you want scoped Admins/Managers to assign
+        // federation reps within their own jurisdiction too.
         [HttpPost("{id}/federation-position")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> AssignFederationPosition(Guid id, FederationPositionAssignDto dto)
         {
+            // ... unchanged from before ...
             var user = await _db.Users.FindAsync(id);
             if (user == null) return NotFound(new { detail = "کاربر یافت نشد" });
 
@@ -184,93 +223,55 @@ namespace Backend.Controllers
             if (!Enum.TryParse<FederationPositionType>(dto.Position, out var positionEnum))
                 return BadRequest(new { detail = "سمت انتخاب‌شده معتبر نیست" });
 
-            var currentHolder = await _db.FederationPositions
-            .FirstOrDefaultAsync(p => p.FederationId == dto.FederationId
-            && p.Position == positionEnum
-            && p.EndDate == null);
-
-            if (currentHolder != null)
-            {
-                currentHolder.EndDate = dto.StartDate;
-            }
+            var currentHolder = await _db.FederationPositions.FirstOrDefaultAsync(p =>
+                p.FederationId == dto.FederationId && p.Position == positionEnum && p.EndDate == null);
+            if (currentHolder != null) currentHolder.EndDate = dto.StartDate;
 
             var newPosition = new FederationPosition
             {
-                UserId = id,
-                FederationId = dto.FederationId,
-                Position = positionEnum,
-                StartDate = dto.StartDate,
-                EndDate = null
+                UserId = id, FederationId = dto.FederationId, Position = positionEnum,
+                StartDate = dto.StartDate, EndDate = null
             };
-
             _db.FederationPositions.Add(newPosition);
             await _db.SaveChangesAsync();
 
             return Ok(new { success = true, positionId = newPosition.Id });
         }
 
-        // GET /api/users/{id}/federation-positions
-        // Full history (past and current) for one specific user — open to
-        // Admin/Manager since it's read-only reference/audit information.
         [HttpGet("{id}/federation-positions")]
-        [Authorize(Roles = "Admin,Manager")]
         public async Task<IActionResult> GetFederationPositions(Guid id)
         {
             var positions = await _db.FederationPositions
-            .Include(p => p.Federation)
-            .Include(p => p.User)
-            .Where(p => p.UserId == id)
-            .OrderByDescending(p => p.StartDate)
-            .Select(p => new FederationPositionOutDto(
-            p.Id, p.Position.ToString(), p.StartDate, p.EndDate,
-            p.UserId, p.User.FirstName ?? string.Empty, p.User.LastName ?? p.User.UserName!,
-            p.FederationId, p.Federation.Name))
-            .ToListAsync();
+                .Include(p => p.Federation).Include(p => p.User)
+                .Where(p => p.UserId == id)
+                .OrderByDescending(p => p.StartDate)
+                .Select(p => new FederationPositionOutDto(
+                    p.Id, p.Position.ToString(), p.StartDate, p.EndDate,
+                    p.UserId, p.User.FirstName!, p.User.LastName!,
+                    p.FederationId, p.Federation.Name ?? ""))
+                .ToListAsync();
 
             return Ok(positions);
         }
 
-        // Shared validation logic for Create and Update, so the "does this
-        // scope combination make sense" rule only exists in one place.
         private async Task<string?> ValidateScopeAsync(ScopeLevel level, Guid? provinceId, Guid? cityId)
         {
-            if (level == ScopeLevel.National)
-            {
-                // National scope shouldn't have a province/city attached at all —
-                // not an error, just something the controller silently clears
-                // when saving (see ScopeProvinceId/ScopeCityId assignment above),
-                // so no validation needed here.
-                return null;
-            }
+            if (level == ScopeLevel.National) return null;
 
             if (level == ScopeLevel.Province)
             {
-                if (provinceId == null)
-                    return "برای دسترسی استانی، انتخاب استان الزامی است";
-
-                var provinceExists = await _db.Provinces.AnyAsync(p => p.Id == provinceId);
-                if (!provinceExists)
-                    return "استان انتخاب‌شده معتبر نیست";
-
+                if (provinceId == null) return "برای دسترسی استانی، انتخاب استان الزامی است";
+                if (!await _db.Provinces.AnyAsync(p => p.Id == provinceId)) return "استان انتخاب‌شده معتبر نیست";
                 return null;
             }
 
             if (level == ScopeLevel.City)
             {
-                if (cityId == null)
-                    return "برای دسترسی شهری، انتخاب شهر الزامی است";
-
+                if (cityId == null) return "برای دسترسی شهری، انتخاب شهر الزامی است";
                 var city = await _db.Cities.FindAsync(cityId);
-                if (city == null)
-                    return "شهر انتخاب‌شده معتبر نیست";
-
-                // Cross-check: if a provinceId was also submitted alongside the
-                // city, it must actually match that city's real province —
-                // otherwise the frontend could accidentally submit a mismatched
-                // pair (picked a city, then province dropdown wasn't updated).
+                if (city == null) return "شهر انتخاب‌شده معتبر نیست";
                 if (provinceId != null && city.ProvinceId != provinceId)
                     return "استان و شهر انتخاب‌شده با یکدیگر همخوانی ندارند";
-
                 return null;
             }
 
