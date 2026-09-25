@@ -68,7 +68,13 @@ namespace Backend.Controllers
         {
             var qs = _db.Users.Include(u => u.ScopeProvince).Include(u => u.ScopeCity).AsQueryable();
 
-            if (!string.IsNullOrEmpty(scopeLevel)) qs = qs.Where(u => u.ScopeLevel.ToString() == scopeLevel);
+            if (!string.IsNullOrEmpty(scopeLevel))
+            {
+                if (!Enum.TryParse<ScopeLevel>(scopeLevel, out var scopeLevelEnum))
+                    return BadRequest(new { detail = "سطح دسترسی نامعتبر است" });
+                qs = qs.Where(u => u.ScopeLevel == scopeLevelEnum);
+            }
+
             if (cityId.HasValue) qs = qs.Where(u => u.ScopeCityId == cityId.Value);
             else if (provinceId.HasValue) qs = qs.Where(u => u.ScopeProvinceId == provinceId.Value);
 
