@@ -98,7 +98,8 @@ export default function UsersList() {
 
   const columns = [
     { title: 'نام کاربری', dataIndex: 'username' },
-    { title: 'نام کامل', dataIndex: 'fullName' },
+    { title: 'نام', dataIndex: 'firstName' },
+    { title: 'نام خانوادگی', dataIndex: 'lastName' },
     { title: 'نقش', dataIndex: 'role', render: (v) => <Tag>{ROLE_LABELS[v] || v}</Tag> },
     { title: 'سطح دسترسی', dataIndex: 'scopeLevel', render: (v) => SCOPE_LEVEL_LABELS[v] || v },
     { title: 'استان', dataIndex: 'scopeProvinceName', render: (v) => v || '—' },
@@ -147,7 +148,7 @@ export default function UsersList() {
         destroyOnClose
       >
         <Form form={form} layout="vertical" onFinish={handleFinish} disabled={isFetchingEditing}>
-          <Form.Item name="username" label="نام کاربری" rules={[{ required: true }]}>
+          <Form.Item name="username" label="کد ملی" rules={[{ required: true }]}>
             <Input disabled={isEdit} />
           </Form.Item>
           {!isEdit && (
@@ -155,9 +156,14 @@ export default function UsersList() {
               <Input.Password />
             </Form.Item>
           )}
-          <Form.Item name="fullName" label="نام کامل" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
+          <Space style={{ width: '100%' }} size={"middle"}>
+            <Form.Item name="firstName" label="نام" rules={[{ required: true }]} style={{ width: '228px' }}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="lastName" label="نام خانوادگی" rules={[{ required: true }]} style={{ width: '228px' }}>
+              <Input />
+            </Form.Item>
+          </Space>
           <Form.Item name="role" label="نقش" rules={[{ required: true }]}>
             <Select options={Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }))} />
           </Form.Item>
