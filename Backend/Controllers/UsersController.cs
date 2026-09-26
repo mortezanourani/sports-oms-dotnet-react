@@ -11,7 +11,7 @@ namespace Backend.Controllers
 {
     [ApiController]
     [Route("api/users")]
-    [Authorize(Roles = "Admin,Manager")] // role gate stays the same; scope gate is method-body logic below
+    [Authorize(Roles = "Admin,Manager,HumanResourceManager,HumanResourceOfficer")]
     public class UsersController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -23,46 +23,132 @@ namespace Backend.Controllers
             _userManager = userManager;
         }
 
-        // Admin and Manager are now fully symmetric for user management �
-        // the only remaining difference between them lives elsewhere
-        // (federation position assignment stays Admin-only, unchanged
-        // below). This single method is the real authorization boundary
-        // for create/edit/deactivate, replacing the old flat "Admin only"
-        // rule with a scope-aware one.
-        private bool CanManageTargetScope(string targetScopeLevel, Guid? targetProvinceId, Guid? targetCityId)
+        // Authorization logic:
+        // Admins also have scope limitations:
+        // - Mastery Admin can edit all Admin users
+        // - Province Admin can only edit Province Admin (in their province) and City Admin (in their province)
+        // - City Admin can only edit City Admin (in their city)
+        //
+        // Manager, HumanResourceManager, HumanResourceOfficer can manage users in:
+        // - Their own scope
+        // - All lower-level scopes (Province users for Mastery, City users for Mastery/Province)
+        //
+        // Role-based restrictions:
+        // - Manager, HumanResourceManager cannot edit Admin users
+        // - HumanResourceManager cannot edit Manager users
+        // - HumanResourceOfficer cannot edit HumanResourceManager, Manager, or Admin users
+        // - HumanResourceOfficer cannot deactivate users
+        private bool CanManageTargetScope(string targetScopeLevel, Guid? targetProvinceId, Guid? targetCityId, string? targetRole)
         {
+            var myRole = User.Role();
             var myScope = User.ScopeLevel();
 
-            if (myScope == "Mastery") return true;
-
-            if (myScope == "Province")
+            // Admin scope restrictions
+            if (myRole == "Admin")
             {
-                if (targetScopeLevel == "Mastery") return false;
-                // Both Province- and City-scoped target users carry their
-                // own ScopeProvinceId directly (set at creation time), so
-                // no extra City lookup is needed here to find "which
-                // province does this city belong to" � it's already on
-                // the record.
-                return targetProvinceId == User.ScopeProvinceId();
+                if (myScope == "Mastery")
+                {
+                    // Mastery Admin can manage all Admin users (any scope)
+                    return true;
+                }
+                else if (myScope == "Province")
+                {
+                    // Province Admin can only manage Province Admin and City Admin in their province
+                    if (targetScopeLevel == "Mastery") return false;
+                    if (targetScopeLevel == "Province" && targetProvinceId != User.ScopeProvinceId()) return false;
+                    if (targetScopeLevel == "City" && targetProvinceId != User.ScopeProvinceId()) return false;
+                    return true;
+                }
+                else
+                {
+                    // City Admin can only manage City Admin in their city
+                    if (targetScopeLevel != "City") return false;
+                    if (targetCityId != User.ScopeCityId()) return false;
+                    return true;
+                }
             }
 
-            if (myScope == "City")
+            // Determine if target is in allowed scope hierarchy
+            bool isInAllowedScope;
+            if (myScope == "Mastery")
             {
-                return targetScopeLevel == "City" && targetCityId == User.ScopeCityId();
+                // Mastery scope can manage Mastery, Province, and City users
+                isInAllowedScope = targetScopeLevel is "Mastery" or "Province" or "City";
+            }
+            else if (myScope == "Province")
+            {
+                // Province scope can manage Province and City users (in their province)
+                isInAllowedScope = (targetScopeLevel == "Province" && targetProvinceId == User.ScopeProvinceId()) ||
+                                   (targetScopeLevel == "City" && targetProvinceId == User.ScopeProvinceId());
+            }
+            else
+            {
+                // City scope can only manage City users in their city
+                isInAllowedScope = targetScopeLevel == "City" && targetCityId == User.ScopeCityId();
             }
 
-            return false;
+            if (!isInAllowedScope)
+                return false;
+
+            // Role-based restrictions
+            if (myRole == "Manager" || myRole == "HumanResourceManager" || myRole == "HumanResourceOfficer")
+            {
+                // Cannot manage Admin users
+                if (targetRole == "Admin")
+                    return false;
+
+                // HumanResourceManager cannot manage Manager users
+                if (myRole == "HumanResourceManager" && targetRole == "Manager")
+                    return false;
+
+                // HumanResourceOfficer cannot manage HumanResourceManager, Manager, or Admin users
+                if (myRole == "HumanResourceOfficer" && targetRole is "HumanResourceManager" or "Manager" or "Admin")
+                    return false;
+
+                // HumanResourceOfficer can only manage HumanResourceOfficer users if at same or lower scope
+                if (myRole == "HumanResourceOfficer" && targetRole == "HumanResourceOfficer")
+                {
+                    if (myScope == "Mastery")
+                    {
+                        // Mastery HumanResourceOfficer can manage any HumanResourceOfficer
+                        return true;
+                    }
+                    else if (myScope == "Province")
+                    {
+                        // Province HumanResourceOfficer can manage HumanResourceOfficer in their province
+                        return targetProvinceId == User.ScopeProvinceId();
+                    }
+                    else
+                    {
+                        // City HumanResourceOfficer can only manage HumanResourceOfficer in their city
+                        return targetCityId == User.ScopeCityId();
+                    }
+                }
+            }
+
+            return true;
         }
 
         private Guid CurrentUserId => Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
 
+        // Helper methods for role-based permissions
+        private bool HasUserManagementRole() => 
+            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer";
+
+        // Check if current user has permission to create users
+        private bool CanCreateUsers() => 
+            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer";
+
+        // Check if current user has permission to edit users
+        private bool CanEditUsers() => 
+            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer";
+
+        // Check if current user has permission to deactivate users
+        // HumanResourceOfficer is explicitly excluded
+        private bool CanDeactivateUsers() =>
+            User.Role() is "Admin" or "Manager" or "HumanResourceManager";
+
         // GET /api/users?scopeLevel=&provinceId=&cityId=
-        // scopeLevel/provinceId/cityId here drive the three dashboard tabs
-        // (Mastery/Province/City). Independent of those params, every
-        // result is ALSO filtered to what the caller's own scope permits �
-        // the tab filters are a UI convenience, the scope filter below is
-        // the actual security boundary, applied regardless of what the
-        // client asks for.
         [HttpGet]
         public async Task<IActionResult> List(string? scopeLevel, Guid? provinceId, Guid? cityId)
         {
@@ -71,7 +157,7 @@ namespace Backend.Controllers
             if (!string.IsNullOrEmpty(scopeLevel))
             {
                 if (!Enum.TryParse<ScopeLevel>(scopeLevel, out var scopeLevelEnum))
-                    return BadRequest(new { detail = "??? ?????? ??????? ???" });
+                    return BadRequest(new { detail = "سطح دسترسی نامعتبر است" });
                 qs = qs.Where(u => u.ScopeLevel == scopeLevelEnum);
             }
 
@@ -79,17 +165,26 @@ namespace Backend.Controllers
             else if (provinceId.HasValue) qs = qs.Where(u => u.ScopeProvinceId == provinceId.Value);
 
             var myScope = User.ScopeLevel();
-            if (myScope == "Province")
+            var myProvinceId = User.ScopeProvinceId();
+            var myCityId = User.ScopeCityId();
+
+            // Apply scope-based filtering
+            if (myScope == "Mastery")
             {
-                var myProvinceId = User.ScopeProvinceId();
-                qs = qs.Where(u => u.ScopeLevel != ScopeLevel.Mastery && u.ScopeProvinceId == myProvinceId);
+                // Mastery scope can see all users
+            }
+            else if (myScope == "Province")
+            {
+                // Province scope can see Province and City users in their province
+                qs = qs.Where(u => 
+                    (u.ScopeLevel == ScopeLevel.Province && u.ScopeProvinceId == myProvinceId) ||
+                    (u.ScopeLevel == ScopeLevel.City && u.ScopeProvinceId == myProvinceId));
             }
             else if (myScope == "City")
             {
-                var myCityId = User.ScopeCityId();
+                // City scope can only see City users in their city
                 qs = qs.Where(u => u.ScopeLevel == ScopeLevel.City && u.ScopeCityId == myCityId);
             }
-            // Mastery scope: no additional restriction beyond the explicit query params above.
 
             var users = await qs
                 .OrderBy(u => u.UserName)
@@ -107,10 +202,10 @@ namespace Backend.Controllers
         {
             var u = await _db.Users.Include(x => x.ScopeProvince).Include(x => x.ScopeCity)
                 .FirstOrDefaultAsync(x => x.Id == id);
-            if (u == null) return NotFound(new { detail = "????? ???? ???" });
+            if (u == null) return NotFound(new { detail = "کاربر یافت نشد" });
 
-            if (!CanManageTargetScope(u.ScopeLevel.ToString(), u.ScopeProvinceId, u.ScopeCityId))
-                return Forbid("??? ????? ?????? ??? ????? ?? ??????");
+            if (!CanManageTargetScope(u.ScopeLevel.ToString(), u.ScopeProvinceId, u.ScopeCityId, u.Role.ToString()))
+                return Forbid("شما اجازه مشاهده این کاربر را ندارید");
 
             return Ok(new UserOutDto(
                 u.Id, u.UserName!, u.FirstName ?? "", u.LastName ?? "", u.Role.ToString(), u.ScopeLevel.ToString(),
@@ -121,12 +216,15 @@ namespace Backend.Controllers
         public async Task<IActionResult> Create(UserCreateDto dto)
         {
             if (!Enum.TryParse<UserRole>(dto.Role, out var roleEnum))
-                return BadRequest(new { detail = "??? ?????????? ????? ????" });
+                return BadRequest(new { detail = "نقش انتخاب‌شده معتبر نیست" });
             if (!Enum.TryParse<ScopeLevel>(dto.ScopeLevel, out var scopeLevelEnum))
-                return BadRequest(new { detail = "??? ?????? ????????? ????? ????" });
+                return BadRequest(new { detail = "سطح دسترسی جغرافیایی معتبر نیست" });
 
-            if (!CanManageTargetScope(dto.ScopeLevel, dto.ScopeProvinceId, dto.ScopeCityId))
-                return Forbid("??? ????? ????? ????? ?? ??? ??? ?????? ?? ??????");
+            if (!CanCreateUsers())
+                return Forbid("شما اجازه ایجاد کاربر ندارید");
+
+            if (!CanManageTargetScope(dto.ScopeLevel, dto.ScopeProvinceId, dto.ScopeCityId, dto.Role))
+                return Forbid("شما اجازه ایجاد کاربر در این سطح دسترسی و نقش را ندارید");
 
             var scopeError = await ValidateScopeAsync(scopeLevelEnum, dto.ScopeProvinceId, dto.ScopeCityId);
             if (scopeError != null) return BadRequest(new { detail = scopeError });
@@ -160,25 +258,27 @@ namespace Backend.Controllers
         public async Task<IActionResult> Update(Guid id, UserUpdateDto dto)
         {
             var user = await _db.Users.FindAsync(id);
-            if (user == null) return NotFound(new { detail = "????? ???? ???" });
+            if (user == null) return NotFound(new { detail = "کاربر یافت نشد" });
 
-            // Checked against the user's CURRENT scope first � a caller
-            // must already be allowed to manage this person before
-            // touching them at all.
-            if (!CanManageTargetScope(user.ScopeLevel.ToString(), user.ScopeProvinceId, user.ScopeCityId))
-                return Forbid("??? ????? ?????? ??? ????? ?? ??????");
+            // Checked against the user's CURRENT scope and role first - a caller
+            // must already be allowed to manage this person before touching them at all.
+            if (!CanEditUsers())
+                return Forbid("شما اجازه ویرایش کاربران ندارید");
+
+            if (!CanManageTargetScope(user.ScopeLevel.ToString(), user.ScopeProvinceId, user.ScopeCityId, user.Role.ToString()))
+                return Forbid("شما اجازه ویرایش این کاربر را ندارید");
 
             if (!Enum.TryParse<UserRole>(dto.Role, out var roleEnum))
-                return BadRequest(new { detail = "??? ?????????? ????? ????" });
+                return BadRequest(new { detail = "نقش انتخاب‌شده معتبر نیست" });
             if (!Enum.TryParse<ScopeLevel>(dto.ScopeLevel, out var scopeLevelEnum))
-                return BadRequest(new { detail = "??? ?????? ????????? ????? ????" });
+                return BadRequest(new { detail = "سطح دسترسی جغرافیایی معتبر نیست" });
 
-            // ALSO checked against the proposed NEW scope � otherwise a
+            // ALSO checked against the proposed NEW scope - otherwise a
             // Province admin could edit someone already within their
             // jurisdiction and "promote" them to National scope, escaping
             // the province admin's own authority entirely.
-            if (!CanManageTargetScope(dto.ScopeLevel, dto.ScopeProvinceId, dto.ScopeCityId))
-                return Forbid("??? ????? ?????? ??? ????? ?? ??? ??? ?????? ?? ??????");
+            if (!CanManageTargetScope(dto.ScopeLevel, dto.ScopeProvinceId, dto.ScopeCityId, dto.Role))
+                return Forbid("شما اجازه انتقال این کاربر به این سطح دسترسی را ندارید");
 
             var scopeError = await ValidateScopeAsync(scopeLevelEnum, dto.ScopeProvinceId, dto.ScopeCityId);
             if (scopeError != null) return BadRequest(new { detail = scopeError });
@@ -198,10 +298,14 @@ namespace Backend.Controllers
         public async Task<IActionResult> Deactivate(Guid id)
         {
             var user = await _userManager.FindByIdAsync(id.ToString());
-            if (user == null) return NotFound(new { detail = "????? ???? ???" });
+            if (user == null) return NotFound(new { detail = "کاربر یافت نشد" });
 
-            if (!CanManageTargetScope(user.ScopeLevel.ToString(), user.ScopeProvinceId, user.ScopeCityId))
-                return Forbid("??? ????? ???????????? ??? ????? ?? ??????");
+            // HumanResourceOfficer cannot deactivate users at all
+            if (!CanDeactivateUsers())
+                return Forbid("شما اجازه غیرفعال‌سازی کاربران ندارید");
+
+            if (!CanManageTargetScope(user.ScopeLevel.ToString(), user.ScopeProvinceId, user.ScopeCityId, user.Role.ToString()))
+                return Forbid("شما اجازه غیرفعال‌سازی این کاربر را ندارید");
 
             await _userManager.SetLockoutEnabledAsync(user, true);
             await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
@@ -209,25 +313,19 @@ namespace Backend.Controllers
             return Ok(new { success = true });
         }
 
-        // Federation position assignment intentionally stays Admin-only,
-        // with no scope-based expansion � this wasn't part of what you
-        // asked to change, so I left it exactly as it was rather than
-        // assuming it should follow the same new pattern. Worth revisiting
-        // deliberately later if you want scoped Admins/Managers to assign
-        // federation reps within their own jurisdiction too.
+        // Federation position assignment intentionally stays Admin-only
         [HttpPost("{id}/federation-position")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> AssignFederationPosition(Guid id, FederationPositionAssignDto dto)
         {
-            // ... unchanged from before ...
             var user = await _db.Users.FindAsync(id);
-            if (user == null) return NotFound(new { detail = "????? ???? ???" });
+            if (user == null) return NotFound(new { detail = "کاربر یافت نشد" });
 
             var federation = await _db.Federations.FindAsync(dto.FederationId);
-            if (federation == null) return BadRequest(new { detail = "???????? ?????????? ????? ????" });
+            if (federation == null) return BadRequest(new { detail = "فدراسیون انتخاب‌شده معتبر نیست" });
 
             if (!Enum.TryParse<FederationPositionType>(dto.Position, out var positionEnum))
-                return BadRequest(new { detail = "??? ?????????? ????? ????" });
+                return BadRequest(new { detail = "سمت انتخاب‌شده معتبر نیست" });
 
             var currentHolder = await _db.FederationPositions.FirstOrDefaultAsync(p =>
                 p.FederationId == dto.FederationId && p.Position == positionEnum && p.EndDate == null);
@@ -266,18 +364,18 @@ namespace Backend.Controllers
 
             if (level == ScopeLevel.Province)
             {
-                if (provinceId == null) return "???? ?????? ??????? ?????? ????? ?????? ???";
-                if (!await _db.Provinces.AnyAsync(p => p.Id == provinceId)) return "????? ?????????? ????? ????";
+                if (provinceId == null) return "برای دسترسی استانی، انتخاب استان الزامی است";
+                if (!await _db.Provinces.AnyAsync(p => p.Id == provinceId)) return "استان انتخاب‌شده معتبر نیست";
                 return null;
             }
 
             if (level == ScopeLevel.City)
             {
-                if (cityId == null) return "???? ?????? ????? ?????? ??? ?????? ???";
+                if (cityId == null) return "برای دسترسی شهری، انتخاب شهر الزامی است";
                 var city = await _db.Cities.FindAsync(cityId);
-                if (city == null) return "??? ?????????? ????? ????";
+                if (city == null) return "شهر انتخاب‌شده معتبر نیست";
                 if (provinceId != null && city.ProvinceId != provinceId)
-                    return "????? ? ??? ?????????? ?? ?????? ??????? ??????";
+                    return "استان و شهر انتخاب‌شده با یکدیگر همخوانی ندارند";
                 return null;
             }
 
