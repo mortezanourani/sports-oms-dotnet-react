@@ -40,7 +40,7 @@ namespace Backend.Services
                 var provinceId = user.ScopeProvinceId();
                 return querySet.Where(c => c.City != null && c.City.ProvinceId == provinceId);
             }
-            return querySet; // National — no restriction, includes champions with no city set
+            return querySet; // Mastery — no restriction, includes champions with no city set
         }
 
         public IQueryable<AthleteCount> FilterAthleteCounts(IQueryable<AthleteCount> querySet, ClaimsPrincipal user)
@@ -56,13 +56,13 @@ namespace Backend.Services
                 var provinceId = user.ScopeProvinceId();
                 return querySet.Where(a => a.City.ProvinceId == provinceId);
             }
-            return querySet; // National
+            return querySet; // Mastery
         }
 
         public async Task CheckCityAllowedAsync(ClaimsPrincipal user, Guid cityId)
         {
             var scopeLevel = user.ScopeLevel();
-            if (scopeLevel == "National") return;
+            if (scopeLevel == "Mastery") return;
 
             var city = await _db.Cities.FindAsync(cityId)
                 ?? throw new KeyNotFoundException("City not found");

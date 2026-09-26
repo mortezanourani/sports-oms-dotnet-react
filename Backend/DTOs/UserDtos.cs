@@ -11,7 +11,7 @@
     string FirstName,
     string LastName,
     string Role, // matches UserRole enum names, e.g. "Admin", "M88Officer"
-    string ScopeLevel, // matches ScopeLevel enum names: "National", "Province", "City"
+    string ScopeLevel, // matches ScopeLevel enum names: "Mastery", "Province", "City"
     Guid? ScopeProvinceId,
     Guid? ScopeCityId
     );
