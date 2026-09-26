@@ -11,7 +11,7 @@ namespace Backend.Controllers
 {
     [ApiController]
     [Route("api/users")]
-    [Authorize(Roles = "Admin,Manager,HumanResourceManager,HumanResourceOfficer")]
+    [Authorize(Roles = "Admin,Manager,HumanResourceManager,HumanResourceOfficer,SportsManager,SportsOfficer")]
     public class UsersController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -28,6 +28,8 @@ namespace Backend.Controllers
         // - Mastery Admin can edit all Admin users
         // - Province Admin can only edit Province Admin (in their province) and City Admin (in their province)
         // - City Admin can only edit City Admin (in their city)
+        // - Admin users can also manage FederationRep users in their own scope + lower scopes
+        // - Manager users can also manage FederationRep users in their own scope + lower scopes
         //
         // Manager, HumanResourceManager, HumanResourceOfficer can manage users in:
         // - Their own scope
@@ -38,6 +40,12 @@ namespace Backend.Controllers
         // - HumanResourceManager cannot edit Manager users
         // - HumanResourceOfficer cannot edit HumanResourceManager, Manager, or Admin users
         // - HumanResourceOfficer cannot deactivate users
+        //
+        // SportsManager and SportsOfficer can ONLY create/edit users with FederationRep role
+        // - They can create/edit FederationRep users in their own scope + lower scopes
+        // - SportsManager can deactivate FederationRep users in their own scope + lower scopes
+        // - SportsOfficer CANNOT deactivate any users
+        // - SportsManager/SportsOfficer CANNOT edit Admin, Manager, HumanResourceManager, HumanResourceOfficer users
         private bool CanManageTargetScope(string targetScopeLevel, Guid? targetProvinceId, Guid? targetCityId, string? targetRole)
         {
             var myRole = User.Role();
@@ -46,6 +54,26 @@ namespace Backend.Controllers
             // Admin scope restrictions
             if (myRole == "Admin")
             {
+                // Admin can always manage FederationRep users in their scope + lower scopes
+                if (targetRole == "FederationRep")
+                {
+                    bool adminIsInAllowedScope;
+                    if (myScope == "Mastery")
+                    {
+                        adminIsInAllowedScope = targetScopeLevel is "Mastery" or "Province" or "City";
+                    }
+                    else if (myScope == "Province")
+                    {
+                        adminIsInAllowedScope = (targetScopeLevel == "Province" && targetProvinceId == User.ScopeProvinceId()) ||
+                                           (targetScopeLevel == "City" && targetProvinceId == User.ScopeProvinceId());
+                    }
+                    else
+                    {
+                        adminIsInAllowedScope = targetScopeLevel == "City" && targetCityId == User.ScopeCityId();
+                    }
+                    if (adminIsInAllowedScope) return true;
+                }
+
                 if (myScope == "Mastery")
                 {
                     // Mastery Admin can manage all Admin users (any scope)
@@ -68,30 +96,84 @@ namespace Backend.Controllers
                 }
             }
 
+            // Manager can manage FederationRep users in their scope + lower scopes
+            if (myRole == "Manager")
+            {
+                if (targetRole == "FederationRep")
+                {
+                    bool managerIsInAllowedScope;
+                    if (myScope == "Mastery")
+                    {
+                        managerIsInAllowedScope = targetScopeLevel is "Mastery" or "Province" or "City";
+                    }
+                    else if (myScope == "Province")
+                    {
+                        managerIsInAllowedScope = (targetScopeLevel == "Province" && targetProvinceId == User.ScopeProvinceId()) ||
+                                           (targetScopeLevel == "City" && targetProvinceId == User.ScopeProvinceId());
+                    }
+                    else
+                    {
+                        managerIsInAllowedScope = targetScopeLevel == "City" && targetCityId == User.ScopeCityId();
+                    }
+                    if (managerIsInAllowedScope) return true;
+                }
+
+                // Manager cannot manage Admin users
+                if (targetRole == "Admin")
+                    return false;
+
+                // Determine if target is in allowed scope hierarchy
+                bool managerScopeCheck;
+                if (myScope == "Mastery")
+                {
+                    managerScopeCheck = targetScopeLevel is "Mastery" or "Province" or "City";
+                }
+                else if (myScope == "Province")
+                {
+                    managerScopeCheck = (targetScopeLevel == "Province" && targetProvinceId == User.ScopeProvinceId()) ||
+                                       (targetScopeLevel == "City" && targetProvinceId == User.ScopeProvinceId());
+                }
+                else
+                {
+                    managerScopeCheck = targetScopeLevel == "City" && targetCityId == User.ScopeCityId();
+                }
+
+                if (!managerScopeCheck)
+                    return false;
+
+                return true;
+            }
+
             // Determine if target is in allowed scope hierarchy
-            bool isInAllowedScope;
+            bool isInAllowedScopeAny;
             if (myScope == "Mastery")
             {
-                // Mastery scope can manage Mastery, Province, and City users
-                isInAllowedScope = targetScopeLevel is "Mastery" or "Province" or "City";
+                isInAllowedScopeAny = targetScopeLevel is "Mastery" or "Province" or "City";
             }
             else if (myScope == "Province")
             {
-                // Province scope can manage Province and City users (in their province)
-                isInAllowedScope = (targetScopeLevel == "Province" && targetProvinceId == User.ScopeProvinceId()) ||
+                isInAllowedScopeAny = (targetScopeLevel == "Province" && targetProvinceId == User.ScopeProvinceId()) ||
                                    (targetScopeLevel == "City" && targetProvinceId == User.ScopeProvinceId());
             }
             else
             {
-                // City scope can only manage City users in their city
-                isInAllowedScope = targetScopeLevel == "City" && targetCityId == User.ScopeCityId();
+                isInAllowedScopeAny = targetScopeLevel == "City" && targetCityId == User.ScopeCityId();
             }
 
-            if (!isInAllowedScope)
+            if (!isInAllowedScopeAny)
                 return false;
 
-            // Role-based restrictions
-            if (myRole == "Manager" || myRole == "HumanResourceManager" || myRole == "HumanResourceOfficer")
+            // SportsManager and SportsOfficer can ONLY manage FederationRep users
+            if (myRole is "SportsManager" or "SportsOfficer")
+            {
+                // Can only manage FederationRep users
+                if (targetRole != "FederationRep")
+                    return false;
+                return true;
+            }
+
+            // Role-based restrictions for other roles
+            if (myRole == "HumanResourceManager" || myRole == "HumanResourceOfficer")
             {
                 // Cannot manage Admin users
                 if (targetRole == "Admin")
@@ -110,17 +192,14 @@ namespace Backend.Controllers
                 {
                     if (myScope == "Mastery")
                     {
-                        // Mastery HumanResourceOfficer can manage any HumanResourceOfficer
                         return true;
                     }
                     else if (myScope == "Province")
                     {
-                        // Province HumanResourceOfficer can manage HumanResourceOfficer in their province
                         return targetProvinceId == User.ScopeProvinceId();
                     }
                     else
                     {
-                        // City HumanResourceOfficer can only manage HumanResourceOfficer in their city
                         return targetCityId == User.ScopeCityId();
                     }
                 }
@@ -133,20 +212,28 @@ namespace Backend.Controllers
 
         // Helper methods for role-based permissions
         private bool HasUserManagementRole() => 
-            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer";
+            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer" or "SportsManager" or "SportsOfficer";
 
         // Check if current user has permission to create users
         private bool CanCreateUsers() => 
-            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer";
+            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer" or "SportsManager" or "SportsOfficer";
 
         // Check if current user has permission to edit users
         private bool CanEditUsers() => 
-            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer";
+            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer" or "SportsManager" or "SportsOfficer";
 
         // Check if current user has permission to deactivate users
-        // HumanResourceOfficer is explicitly excluded
+        // HumanResourceOfficer and SportsOfficer are explicitly excluded
         private bool CanDeactivateUsers() =>
-            User.Role() is "Admin" or "Manager" or "HumanResourceManager";
+            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "SportsManager";
+
+        // Check if current user can manage FederationRep users
+        private bool CanManageFederationRepUsers() =>
+            User.Role() is "Admin" or "Manager" or "SportsManager" or "SportsOfficer";
+
+        // Check if user can create FederationRep users specifically
+        private bool CanCreateFederationRepUsers() =>
+            User.Role() is "Admin" or "Manager" or "SportsManager" or "SportsOfficer";
 
         // GET /api/users?scopeLevel=&provinceId=&cityId=
         [HttpGet]
@@ -167,9 +254,31 @@ namespace Backend.Controllers
             var myScope = User.ScopeLevel();
             var myProvinceId = User.ScopeProvinceId();
             var myCityId = User.ScopeCityId();
+            var myRole = User.Role();
 
             // Apply scope-based filtering
-            if (myScope == "Mastery")
+            if (myRole is "SportsManager" or "SportsOfficer")
+            {
+                // SportsManager and SportsOfficer can only see FederationRep users in their scope
+                qs = qs.Where(u => u.Role == UserRole.FederationRep);
+                if (myScope == "Mastery")
+                {
+                    // Mastery can see all FederationRep users
+                }
+                else if (myScope == "Province")
+                {
+                    // Province can see FederationRep in their province
+                    qs = qs.Where(u => 
+                        (u.ScopeLevel == ScopeLevel.Province && u.ScopeProvinceId == myProvinceId) ||
+                        (u.ScopeLevel == ScopeLevel.City && u.ScopeProvinceId == myProvinceId));
+                }
+                else if (myScope == "City")
+                {
+                    // City can only see FederationRep in their city
+                    qs = qs.Where(u => u.ScopeLevel == ScopeLevel.City && u.ScopeCityId == myCityId);
+                }
+            }
+            else if (myScope == "Mastery")
             {
                 // Mastery scope can see all users
             }
@@ -219,6 +328,13 @@ namespace Backend.Controllers
                 return BadRequest(new { detail = "نقش انتخاب‌شده معتبر نیست" });
             if (!Enum.TryParse<ScopeLevel>(dto.ScopeLevel, out var scopeLevelEnum))
                 return BadRequest(new { detail = "سطح دسترسی جغرافیایی معتبر نیست" });
+
+            // SportsManager and SportsOfficer can ONLY create FederationRep users
+            if (User.Role() is "SportsManager" or "SportsOfficer")
+            {
+                if (roleEnum != UserRole.FederationRep)
+                    return BadRequest(new { detail = "مدیران و کارشناسان ورزشی فقط مجاز به ایجاد کاربر با نقش نماینده فدراسیون هستند" });
+            }
 
             if (!CanCreateUsers())
                 return Forbid("شما اجازه ایجاد کاربر ندارید");
@@ -273,6 +389,13 @@ namespace Backend.Controllers
             if (!Enum.TryParse<ScopeLevel>(dto.ScopeLevel, out var scopeLevelEnum))
                 return BadRequest(new { detail = "سطح دسترسی جغرافیایی معتبر نیست" });
 
+            // SportsManager and SportsOfficer can ONLY edit FederationRep users
+            if (User.Role() is "SportsManager" or "SportsOfficer")
+            {
+                if (roleEnum != UserRole.FederationRep)
+                    return BadRequest(new { detail = "مدیران و کارشناسان ورزشی فقط مجاز به ویرایش کاربر با نقش نماینده فدراسیون هستند" });
+            }
+
             // ALSO checked against the proposed NEW scope - otherwise a
             // Province admin could edit someone already within their
             // jurisdiction and "promote" them to National scope, escaping
@@ -300,7 +423,7 @@ namespace Backend.Controllers
             var user = await _userManager.FindByIdAsync(id.ToString());
             if (user == null) return NotFound(new { detail = "کاربر یافت نشد" });
 
-            // HumanResourceOfficer cannot deactivate users at all
+            // HumanResourceOfficer and SportsOfficer cannot deactivate users at all
             if (!CanDeactivateUsers())
                 return Forbid("شما اجازه غیرفعال‌سازی کاربران ندارید");
 
