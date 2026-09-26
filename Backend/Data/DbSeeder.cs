@@ -22,7 +22,7 @@ namespace Backend.Data
                 Email = $"{adminUsername}@local",
                 LastName = "مدیر سیستم",
                 Role = UserRole.Admin,
-                ScopeLevel = ScopeLevel.National,
+                ScopeLevel = ScopeLevel.Mastery,
                 EmailConfirmed = true
             };
 
