@@ -187,6 +187,10 @@ namespace Backend.Controllers
                 if (myRole == "HumanResourceOfficer" && targetRole is "HumanResourceManager" or "Manager" or "Admin")
                     return false;
 
+                // HumanResourceManager and HumanResourceOfficer CANNOT manage FederationRep users
+                if (targetRole == "FederationRep")
+                    return false;
+
                 // HumanResourceOfficer can only manage HumanResourceOfficer users if at same or lower scope
                 if (myRole == "HumanResourceOfficer" && targetRole == "HumanResourceOfficer")
                 {
@@ -275,6 +279,27 @@ namespace Backend.Controllers
                 else if (myScope == "City")
                 {
                     // City can only see FederationRep in their city
+                    qs = qs.Where(u => u.ScopeLevel == ScopeLevel.City && u.ScopeCityId == myCityId);
+                }
+            }
+            else if (myRole is "HumanResourceManager" or "HumanResourceOfficer")
+            {
+                // HumanResourceManager and HumanResourceOfficer CANNOT see FederationRep users
+                qs = qs.Where(u => u.Role != UserRole.FederationRep);
+                if (myScope == "Mastery")
+                {
+                    // Mastery can see all users except FederationRep
+                }
+                else if (myScope == "Province")
+                {
+                    // Province can see Province and City users (except FederationRep) in their province
+                    qs = qs.Where(u => 
+                        (u.ScopeLevel == ScopeLevel.Province && u.ScopeProvinceId == myProvinceId) ||
+                        (u.ScopeLevel == ScopeLevel.City && u.ScopeProvinceId == myProvinceId));
+                }
+                else if (myScope == "City")
+                {
+                    // City can only see City users (except FederationRep) in their city
                     qs = qs.Where(u => u.ScopeLevel == ScopeLevel.City && u.ScopeCityId == myCityId);
                 }
             }
