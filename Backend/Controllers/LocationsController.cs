@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
+using Backend.Extensions;
 
 namespace Backend.Controllers
 {
@@ -19,29 +20,58 @@ namespace Backend.Controllers
             _db = db;
         }
 
+        // Helper methods
+        private bool IsAdmin() => User.Role() == "Admin";
+        private bool IsMasteryScope() => User.ScopeLevel() == "Mastery";
+        private bool IsProvinceScope() => User.ScopeLevel() == "Province";
+        private bool IsCityScope() => User.ScopeLevel() == "City";
+
+        private Guid? MyProvinceId() => IsProvinceScope() || IsCityScope() ? User.ScopeProvinceId() : null;
+        private Guid? MyCityId() => IsCityScope() ? User.ScopeCityId() : null;
+
         // GET /api/locations/provinces
-        // Open to any authenticated user — every role needs to read this list
-        // to populate dropdowns, so no extra [Authorize(Roles=...)] restriction here.
         [HttpGet("provinces")]
         public async Task<IActionResult> ListProvinces()
         {
-            var provinces = await _db.Provinces
-            .OrderBy(p => p.Name)
-            .Select(p => new ProvinceOutDto(p.Id, p.Name))
-            .ToListAsync();
+            var query = _db.Provinces.AsQueryable();
+
+            if (!IsAdmin())
+            {
+                // Non-admins: read-only based on scope
+                if (IsMasteryScope())
+                {
+                    // Mastery can see all provinces
+                }
+                else if (IsProvinceScope())
+                {
+                    var myProvinceId = User.ScopeProvinceId();
+                    query = query.Where(p => p.Id == myProvinceId);
+                }
+                else if (IsCityScope())
+                {
+                    var myProvinceId = User.ScopeProvinceId();
+                    query = query.Where(p => p.Id == myProvinceId);
+                }
+            }
+            // Admins can see all provinces (no scope restriction)
+
+            var provinces = await query
+                .OrderBy(p => p.Name)
+                .Select(p => new ProvinceOutDto(p.Id, p.Name))
+                .ToListAsync();
 
             return Ok(provinces);
         }
 
-        // POST /api/locations/provinces
-        // Restricted: reference data should only be edited by Admin or Manager,
-        // per the role table — regular officers only consume this data, never edit it.
+        // POST /api/locations/provinces - Admin only, Mastery scope only
         [HttpPost("provinces")]
-        [Authorize(Roles = "Admin,Manager")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> CreateProvince(ProvinceCreateDto dto)
         {
-            // Guard against duplicate province names before hitting the database,
-            // giving a clear Persian error instead of a raw SQL constraint failure.
+            // Only Mastery Admin can create provinces
+            if (!IsMasteryScope())
+                return Forbid("شما اجازه ایجاد استان ندارید");
+
             var exists = await _db.Provinces.AnyAsync(p => p.Name == dto.Name);
             if (exists)
                 return Conflict(new { detail = "استانی با این نام قبلاً ثبت شده است" });
@@ -53,11 +83,15 @@ namespace Backend.Controllers
             return CreatedAtAction(nameof(ListProvinces), new ProvinceOutDto(province.Id, province.Name));
         }
 
-        // PUT /api/locations/provinces/{id}
+        // PUT /api/locations/provinces/{id} - Admin only, Mastery scope only
         [HttpPut("provinces/{id}")]
-        [Authorize(Roles = "Admin,Manager")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateProvince(Guid id, ProvinceCreateDto dto)
         {
+            // Only Mastery Admin can update provinces
+            if (!IsMasteryScope())
+                return Forbid("شما اجازه ویرایش استان‌ها را ندارید");
+
             var province = await _db.Provinces.FindAsync(id);
             if (province == null)
                 return NotFound(new { detail = "استان یافت نشد" });
@@ -68,16 +102,15 @@ namespace Backend.Controllers
             return Ok(new ProvinceOutDto(province.Id, province.Name));
         }
 
-        // DELETE /api/locations/provinces/{id}
-        // Note: this will fail at the database level if any City still references
-        // this province, because ApplicationDbContext configures that relationship
-        // with DeleteBehavior.Restrict. That's intentional — it stops an Admin from
-        // accidentally deleting a province that still has cities (and therefore
-        // facilities, athlete counts, etc.) attached to it.
+        // DELETE /api/locations/provinces/{id} - Admin only, Mastery scope only
         [HttpDelete("provinces/{id}")]
-        [Authorize(Roles = "Admin,Manager")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteProvince(Guid id)
         {
+            // Only Mastery Admin can delete provinces
+            if (!IsMasteryScope())
+                return Forbid("شما اجازه حذف استان‌ها را ندارید");
+
             var province = await _db.Provinces.FindAsync(id);
             if (province == null)
                 return NotFound(new { detail = "استان یافت نشد" });
@@ -89,8 +122,6 @@ namespace Backend.Controllers
             }
             catch (DbUpdateException)
             {
-                // The database rejected the delete because of the Restrict rule —
-                // translate that into a clear message instead of a raw 500 error.
                 return Conflict(new { detail = "این استان دارای شهرهای ثبت‌شده است و قابل حذف نیست" });
             }
 
@@ -98,37 +129,74 @@ namespace Backend.Controllers
         }
 
         // GET /api/locations/cities?provinceId=...
-        // provinceId is optional — omitting it returns every city in the country,
-        // which is useful for an admin-level "all cities" list view, while passing
-        // it filters to just that province's cities, which is what a cascading
-        // Province -> City dropdown on the frontend will call.
         [HttpGet("cities")]
         public async Task<IActionResult> ListCities(Guid? provinceId)
         {
             var query = _db.Cities.Include(c => c.Province).AsQueryable();
 
+            if (!IsAdmin())
+            {
+                // Non-admins: read-only based on scope
+                if (IsMasteryScope())
+                {
+                    // Mastery can see all cities
+                }
+                else if (IsProvinceScope())
+                {
+                    var myProvinceId = User.ScopeProvinceId();
+                    query = query.Where(c => c.ProvinceId == myProvinceId);
+                }
+                else if (IsCityScope())
+                {
+                    var myCityId = User.ScopeCityId();
+                    query = query.Where(c => c.Id == myCityId);
+                }
+            }
+            else
+            {
+                // Admins: scope-based filtering
+                if (IsProvinceScope())
+                {
+                    // Province Admin can see all cities in their province
+                    var myProvinceId = User.ScopeProvinceId();
+                    query = query.Where(c => c.ProvinceId == myProvinceId);
+                }
+                else if (IsCityScope())
+                {
+                    // City Admin can see only their own city
+                    var myCityId = User.ScopeCityId();
+                    query = query.Where(c => c.Id == myCityId);
+                }
+                // Mastery Admin: can see all cities (no filter)
+            }
+
             if (provinceId.HasValue)
                 query = query.Where(c => c.ProvinceId == provinceId.Value);
 
             var cities = await query
-            .OrderBy(c => c.Name)
-            .Select(c => new CityOutDto(c.Id, c.Name, c.ProvinceId, c.Province.Name))
-            .ToListAsync();
+                .OrderBy(c => c.Name)
+                .Select(c => new CityOutDto(c.Id, c.Name, c.ProvinceId, c.Province.Name))
+                .ToListAsync();
 
             return Ok(cities);
         }
 
-        // POST /api/locations/cities
+        // POST /api/locations/cities - Admin only, Province Admin + Mastery Admin
         [HttpPost("cities")]
-        [Authorize(Roles = "Admin,Manager")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> CreateCity(CityCreateDto dto)
         {
             var province = await _db.Provinces.FindAsync(dto.ProvinceId);
             if (province == null)
                 return BadRequest(new { detail = "استان انتخاب‌شده معتبر نیست" });
 
+            // Only Province Admin or Mastery Admin can create cities
+            // City Admin cannot create cities
+            if (IsCityScope())
+                return Forbid("شما اجازه ایجاد شهر ندارید");
+
             var exists = await _db.Cities
-            .AnyAsync(c => c.ProvinceId == dto.ProvinceId && c.Name == dto.Name);
+                .AnyAsync(c => c.ProvinceId == dto.ProvinceId && c.Name == dto.Name);
             if (exists)
                 return Conflict(new { detail = "این شهر قبلاً در این استان ثبت شده است" });
 
@@ -137,12 +205,12 @@ namespace Backend.Controllers
             await _db.SaveChangesAsync();
 
             return CreatedAtAction(nameof(ListCities),
-            new CityOutDto(city.Id, city.Name, city.ProvinceId, province.Name));
+                new CityOutDto(city.Id, city.Name, city.ProvinceId, province.Name));
         }
 
-        // PUT /api/locations/cities/{id}
+        // PUT /api/locations/cities/{id} - Admin only, Province Admin + Mastery Admin
         [HttpPut("cities/{id}")]
-        [Authorize(Roles = "Admin,Manager")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateCity(Guid id, CityCreateDto dto)
         {
             var city = await _db.Cities.FindAsync(id);
@@ -153,6 +221,19 @@ namespace Backend.Controllers
             if (province == null)
                 return BadRequest(new { detail = "استان انتخاب‌شده معتبر نیست" });
 
+            // Only Province Admin or Mastery Admin can update cities
+            // City Admin cannot update cities
+            if (IsCityScope())
+                return Forbid("شما اجازه ویرایش شهرها را ندارید");
+
+            // Province Admin can only update cities in their province
+            if (IsProvinceScope())
+            {
+                var myProvinceId = User.ScopeProvinceId();
+                if (city.ProvinceId != myProvinceId || province.Id != myProvinceId)
+                    return Forbid("شما اجازه ویرایش این شهر را ندارید");
+            }
+
             city.ProvinceId = dto.ProvinceId;
             city.Name = dto.Name;
             await _db.SaveChangesAsync();
@@ -160,17 +241,27 @@ namespace Backend.Controllers
             return Ok(new CityOutDto(city.Id, city.Name, city.ProvinceId, province.Name));
         }
 
-        // DELETE /api/locations/cities/{id}
-        // Same Restrict-based protection as DeleteProvince: if any Facility or
-        // AthleteCount references this city, the delete fails at the database
-        // level and we translate that into a readable message.
+        // DELETE /api/locations/cities/{id} - Admin only, Province Admin + Mastery Admin
         [HttpDelete("cities/{id}")]
-        [Authorize(Roles = "Admin,Manager")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteCity(Guid id)
         {
             var city = await _db.Cities.FindAsync(id);
             if (city == null)
                 return NotFound(new { detail = "شهر یافت نشد" });
+
+            // Only Province Admin or Mastery Admin can delete cities
+            // City Admin cannot delete cities
+            if (IsCityScope())
+                return Forbid("شما اجازه حذف شهرها را ندارید");
+
+            // Province Admin can only delete cities in their province
+            if (IsProvinceScope())
+            {
+                var myProvinceId = User.ScopeProvinceId();
+                if (city.ProvinceId != myProvinceId)
+                    return Forbid("شما اجازه حذف این شهر را ندارید");
+            }
 
             try
             {
@@ -180,7 +271,6 @@ namespace Backend.Controllers
             catch (DbUpdateException)
             {
                 return Conflict(new { detail = "این شهر دارای اطلاعات وابسته است و قابل حذف نیست" });
-
             }
 
             return Ok(new { success = true });
