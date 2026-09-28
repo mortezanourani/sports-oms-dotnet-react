@@ -38,6 +38,8 @@ export const PERSIAN_MONTHS = [
 export const ROLE_LABELS = {
   Admin: 'مدیر سامانه',
   Manager: 'مدیر',
+  HumanResourceManager: 'مسئول امور اداری',
+  HumanResourceOfficer: 'کارشناس امور اداری',
   M88Manager: 'مسئول ماده 88',
   M88Officer: 'کارشناس ماده 88',
   M5Manager: 'مسئول امور باشگاه‌ها',

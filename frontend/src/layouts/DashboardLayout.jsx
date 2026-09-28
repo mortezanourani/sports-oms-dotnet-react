@@ -21,6 +21,8 @@ const { Text } = Typography;
 const ROLE_MENU = {
     Admin: ['facilities', 'champions', 'federations', 'athletes', 'locations', 'users', 'messages'],
     Manager: ['facilities', 'champions', 'federations', 'athletes', 'users', 'messages'],
+    HumanResourceManager: ['users', 'messages'],
+    HumanResourceOfficer: ['users', 'messages'],
     M88Manager: ['facilities', 'messages'],
     M88Officer: ['facilities', 'messages'],
     M5Manager: ['facilities', 'messages'],
