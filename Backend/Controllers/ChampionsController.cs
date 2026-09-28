@@ -1,10 +1,11 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Backend.Data;
+﻿using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
 using Backend.Services;
+using Backend.Extensions;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Backend.Controllers
 {
@@ -22,6 +23,57 @@ namespace Backend.Controllers
             _scope = scope;
         }
 
+        // Helper methods for permission checks
+        private bool IsAdminOrManager() => User.Role() is "Admin" or "Manager" or "SportsManager";
+        private bool IsSportsOfficer() => User.Role() == "SportsOfficer";
+
+        private bool HasChampionPermission() => User.Role() is "Admin" or "Manager" or "SportsManager" or "SportsOfficer";
+        private bool HasChampionDeletePermission() => User.Role() is "Admin" or "Manager" or "SportsManager";
+
+        private bool CanAccessChampion(Champion champion)
+        {
+            var role = User.Role();
+            var myScopeLevel = User.ScopeLevel();
+
+            // Admin, Manager, SportsManager have full access based on scope
+            if (role is "Admin" or "Manager" or "SportsManager")
+            {
+                if (myScopeLevel == "Mastery") return true;
+                if (myScopeLevel == "Province")
+                {
+                    var myProvinceId = User.ScopeProvinceId();
+                    // Champion can be in province or city within province
+                    return champion.Federation.ProvinceId == myProvinceId ||
+                           (champion.City != null && champion.City.ProvinceId == myProvinceId);
+                }
+                if (myScopeLevel == "City")
+                {
+                    var myCityId = User.ScopeCityId();
+                    // Champion can be in this city
+                    return champion.CityId == myCityId;
+                }
+            }
+
+            // SportsOfficer has same permissions as above
+            if (role == "SportsOfficer")
+            {
+                if (myScopeLevel == "Mastery") return true;
+                if (myScopeLevel == "Province")
+                {
+                    var myProvinceId = User.ScopeProvinceId();
+                    return champion.Federation.ProvinceId == myProvinceId ||
+                           (champion.City != null && champion.City.ProvinceId == myProvinceId);
+                }
+                if (myScopeLevel == "City")
+                {
+                    var myCityId = User.ScopeCityId();
+                    return champion.CityId == myCityId;
+                }
+            }
+
+            return false;
+        }
+
         [HttpGet]
         public async Task<IActionResult> List(Guid? federationId, Guid? provinceId, Guid? cityId, int page = 1, int pageSize = 20)
         {
@@ -36,8 +88,27 @@ namespace Backend.Controllers
 
             if (cityId.HasValue) qs = qs.Where(c => c.CityId == cityId.Value);
             else if (provinceId.HasValue) qs = qs.Where(c => c.City != null && c.City.ProvinceId == provinceId.Value);
-            
-            qs = _scope.FilterChampions(qs, User);
+
+            // Apply scope filtering based on role
+            var role = User.Role();
+            var myScopeLevel = User.ScopeLevel();
+            var myProvinceId = User.ScopeProvinceId();
+            var myCityId = User.ScopeCityId();
+
+            if (role is "Admin" or "Manager" or "SportsManager" or "SportsOfficer")
+            {
+                if (myScopeLevel == "Province")
+                {
+                    qs = qs.Where(c =>
+                        (c.Federation.Level == FederationLevel.Provincial && c.Federation.ProvinceId == myProvinceId) ||
+                        (c.City != null && c.City.ProvinceId == myProvinceId));
+                }
+                else if (myScopeLevel == "City")
+                {
+                    qs = qs.Where(c => c.CityId == myCityId);
+                }
+                // Mastery has no filter (can see all)
+            }
 
             var count = await qs.CountAsync();
             var items = await qs
@@ -66,6 +137,9 @@ namespace Backend.Controllers
             if (champion == null)
                 return NotFound(new { detail = "قهرمان یافت نشد" });
 
+            if (!CanAccessChampion(champion))
+                return Forbid("شما اجازه مشاهده این قهرمان را ندارید");
+
             return Ok(new ChampionDetailOutDto(
                 champion.Id, champion.FullName, champion.BirthDate, champion.Gender.ToString(),
                 champion.FederationId, champion.Federation.Name!,
@@ -79,7 +153,6 @@ namespace Backend.Controllers
         }
 
         [HttpPost]
-        [Authorize(Roles = "Admin,Manager,SportOfficer")]
         public async Task<IActionResult> Create(ChampionCreateDto dto)
         {
             if (!Enum.TryParse<Gender>(dto.Gender, out var genderEnum))
@@ -88,6 +161,13 @@ namespace Backend.Controllers
             var federation = await _db.Federations.FindAsync(dto.FederationId);
             if (federation == null || federation.Level != FederationLevel.National)
                 return BadRequest(new { detail = "فدراسیون انتخاب‌شده باید یک فدراسیون کشوری باشد" });
+
+            // Check if user has permission for this federation's scope
+            var myScopeLevel = User.ScopeLevel();
+            var myProvinceId = User.ScopeProvinceId();
+
+            if (myScopeLevel == "Province" && federation.ProvinceId != myProvinceId)
+                return Forbid("شما اجازه ایجاد قهرمان برای این فدراسیون را ندارید");
 
             if (dto.CityId.HasValue)
             {
@@ -113,19 +193,28 @@ namespace Backend.Controllers
         }
 
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin,Manager,SportOfficer")]
         public async Task<IActionResult> Update(Guid id, ChampionUpdateDto dto)
         {
             var champion = await _db.Champions.FindAsync(id);
             if (champion == null)
                 return NotFound(new { detail = "قهرمان یافت نشد" });
 
+            if (!CanAccessChampion(champion))
+                return Forbid("شما اجازه ویرایش این قهرمان را ندارید");
+
             if (!Enum.TryParse<Gender>(dto.Gender, out var genderEnum))
                 return BadRequest(new { detail = "جنسیت نامعتبر است" });
 
             var federation = await _db.Federations.FindAsync(dto.FederationId);
             if (federation == null || federation.Level != FederationLevel.National)
-                return BadRequest(new { detail = "فدراسیون انتخاب‌شده باید یک فدراسیون کشوری باشد" });
+                return BadRequest(new { detail = "فadorasیون انتخاب‌شده باید یک فadorasیون کشوری باشد" });
+
+            // Verify user can access the new federation scope
+            var myScopeLevel = User.ScopeLevel();
+            var myProvinceId = User.ScopeProvinceId();
+
+            if (myScopeLevel == "Province" && federation.ProvinceId != myProvinceId)
+                return Forbid("شما اجازه ویرایش قهرمان برای این فadorasیون را ندارید");
 
             if (dto.CityId.HasValue)
             {
@@ -147,12 +236,17 @@ namespace Backend.Controllers
         }
 
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin,Manager,SportOfficer")]
         public async Task<IActionResult> Delete(Guid id)
         {
             var champion = await _db.Champions.FindAsync(id);
             if (champion == null)
                 return NotFound(new { detail = "قهرمان یافت نشد" });
+
+            if (!CanAccessChampion(champion))
+                return Forbid("شما اجازه حذف این قهرمان را ندارید");
+
+            if (!HasChampionDeletePermission())
+                return Forbid("شما اجازه حذف قهرمان را ندارید");
 
             _db.Champions.Remove(champion); // cascades to Medals (default EF behavior, required FK)
             await _db.SaveChangesAsync();
@@ -161,12 +255,14 @@ namespace Backend.Controllers
         }
 
         [HttpPost("{championId}/medals")]
-        [Authorize(Roles = "Admin,Manager,SportOfficer")]
         public async Task<IActionResult> AddMedal(Guid championId, MedalCreateDto dto)
         {
             var champion = await _db.Champions.FindAsync(championId);
             if (champion == null)
                 return NotFound(new { detail = "قهرمان یافت نشد" });
+
+            if (!CanAccessChampion(champion))
+                return Forbid("شما اجازه افزودن مدال به این قهرمان را ندارید");
 
             if (!Enum.TryParse<MedalType>(dto.MedalType, out var medalTypeEnum))
                 return BadRequest(new { detail = "نوع مدال نامعتبر است" });
@@ -197,12 +293,19 @@ namespace Backend.Controllers
         }
 
         [HttpDelete("{championId}/medals/{medalId}")]
-        [Authorize(Roles = "Admin,Manager,SportOfficer")]
         public async Task<IActionResult> DeleteMedal(Guid championId, Guid medalId)
         {
             var medal = await _db.Medals.FirstOrDefaultAsync(m => m.Id == medalId && m.ChampionId == championId);
             if (medal == null)
                 return NotFound(new { detail = "مدال یافت نشد" });
+
+            // Get champion to check access
+            var champion = await _db.Champions.FindAsync(championId);
+            if (champion == null || !CanAccessChampion(champion))
+                return Forbid("شما اجازه حذف این مدال را ندارید");
+
+            if (!HasChampionDeletePermission())
+                return Forbid("شما اجازه حذف مدال را ندارید");
 
             _db.Medals.Remove(medal);
             await _db.SaveChangesAsync();
