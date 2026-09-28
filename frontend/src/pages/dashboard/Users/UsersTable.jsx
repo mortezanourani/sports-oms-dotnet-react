@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Table, Button, Space, Typography, Popconfirm, message, Modal, Form,
+  Table, Button, Space, Popconfirm, message, Modal, Form,
   Input, Select, Tag,
 } from 'antd';
 import { PlusOutlined, EditOutlined, StopOutlined, IdcardOutlined } from '@ant-design/icons';
@@ -18,7 +18,7 @@ export default function UsersList({ filters }) {
 
   const { role: myRole } = useAuth();
   const isAdmin = ['Admin'].includes(myRole);
-  const canManage = ['Admin', 'Manager'].includes(myRole);
+  const canManage = ['Admin', 'Manager', 'HumanResourceManager', 'HumanResourceOfficer'].includes(myRole);
   // Manager can view this page (matches the backend's [Authorize(Roles =
   // "Admin,Manager")] on List/Get), but every write action is Admin-only
   // per the role table ("Manager ... can't create users and can't assign
