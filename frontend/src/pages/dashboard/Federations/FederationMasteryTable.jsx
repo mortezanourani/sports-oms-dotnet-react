@@ -3,7 +3,7 @@ import { Table, Button, Typography, Popconfirm, message, Space, Tag, Form, Modal
 import { PlusOutlined, DeleteOutlined, HistoryOutlined, EditOutlined } from '@ant-design/icons';
 import { useFederations, useDeleteFederation, useUpdateFederation } from '../../../hooks/useFederations';
 import { useAuth } from '../../../hooks/useAuth';
-import { canManageNational } from '../../../utils/federationPermissions';
+import { canManageMastery } from '../../../utils/federationPermissions';
 import { FEDERATION_CATEGORY_LABELS } from '../../../constants/labels';
 import FederationFormModal from './FederationFormModal';
 import PositionsModal from './PositionsModal';
@@ -13,7 +13,7 @@ const { Title } = Typography;
 
 export default function FederationsList() {
     const auth = useAuth();
-    const { data: federations, isLoading } = useFederations({ level: 'National' });
+    const { data: federations, isLoading } = useFederations({ level: 'Mastery' });
     const deleteMutation = useDeleteFederation();
     const [createOpen, setCreateOpen] = useState(false);
     const [positionsFederation, setPositionsFederation] = useState(null);
@@ -52,11 +52,11 @@ export default function FederationsList() {
             title: 'عملیات', key: 'actions',
             render: (_, record) => (
                 <Space>
-                    {canManageNational(auth) && (
+                    {canManageMastery(auth) && (
                         <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(record)} />
                     )}
                     <Button icon={<HistoryOutlined />} size="small" onClick={() => setPositionsFederation(record)}>سوابق</Button>
-                    {canManageNational(auth) && (
+                    {canManageMastery(auth) && (
                         <Popconfirm title="حذف این فدراسیون؟ (شامل تمام زیرمجموعه‌های استانی و شهری آن)" onConfirm={() => handleDelete(record.id)} okText="بله" cancelText="خیر">
                             <Button icon={<DeleteOutlined />} size="small" danger />
                         </Popconfirm>
@@ -70,7 +70,7 @@ export default function FederationsList() {
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
                 <Title level={4}>فدراسیون‌ها</Title>
-                {canManageNational(auth) && (
+                {canManageMastery(auth) && (
                     <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>افزودن فدراسیون کشوری</Button>
                 )}
             </div>
@@ -90,7 +90,7 @@ export default function FederationsList() {
                     </Form.Item>
                 </Form>
             </Modal>
-            <FederationFormModal level="National" open={createOpen} onClose={() => setCreateOpen(false)} />
+            <FederationFormModal level="Mastery" open={createOpen} onClose={() => setCreateOpen(false)} />
             <PositionsModal federation={positionsFederation} open={!!positionsFederation} onClose={() => setPositionsFederation(null)} />
         </div>
     );

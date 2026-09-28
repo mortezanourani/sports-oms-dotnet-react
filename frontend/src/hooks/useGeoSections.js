@@ -9,12 +9,12 @@ export function useGeoSections() {
     const [selectedCityId, setSelectedCityId] = useState(null);
     const { data: allCities } = useCities(selectedProvinceId);
 
-    // Mastery section only exists for National-scope users. Province section
-    // exists for National (free choice) and Province (locked to their own).
+    // Mastery section only exists for Mastery-scope users. Province section
+    // exists for Mastery (free choice) and Province (locked to their own).
     // City section always exists, in every scope, just with progressively
     // more restricted — or entirely absent — selectors.
-    const showMastery = auth.scopeLevel === 'National';
-    const showProvinceSection = auth.scopeLevel === 'National' || auth.scopeLevel === 'Province';
+    const showMastery = auth.scopeLevel === 'Mastery';
+    const showProvinceSection = auth.scopeLevel === 'Mastery' || auth.scopeLevel === 'Province';
 
     // Auto-lock the selection to the user's own region the moment we know
     // their scope — this is what makes a Province-scoped user's "Province
@@ -25,7 +25,7 @@ export function useGeoSections() {
         if (auth.scopeLevel === 'City') setSelectedCityId(auth.scopeCityId);
     }, [auth.scopeLevel, auth.scopeProvinceId, auth.scopeCityId]);
 
-    const provinceOptions = auth.scopeLevel === 'National'
+    const provinceOptions = auth.scopeLevel === 'Mastery'
         ? allProvinces
         : allProvinces?.filter((p) => p.id === auth.scopeProvinceId);
 
@@ -37,9 +37,9 @@ export function useGeoSections() {
         auth,
         showMastery,
         showProvinceSection,
-        // Province selector is only interactive for National-scope users —
+        // Province selector is only interactive for Mastery-scope users —
         // Province/City-scoped users see it locked (or hidden) to their own region.
-        provinceLocked: auth.scopeLevel !== 'National',
+        provinceLocked: auth.scopeLevel !== 'Mastery',
         cityLocked: auth.scopeLevel === 'City',
         selectedProvinceId, setSelectedProvinceId, provinceOptions,
         selectedCityId, setSelectedCityId, cityOptions,

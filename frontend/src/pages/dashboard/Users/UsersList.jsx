@@ -10,7 +10,7 @@ export default function UsersList() {
   const items = [
     geo.showMastery && {
       key: 'mastery', label: 'وزارت',
-      children: <UsersTable filters={{ scopeLevel: 'National' }} />,
+      children: <UsersTable filters={{ scopeLevel: 'Mastery' }} />,
     },
     geo.showProvinceSection && {
       key: 'province', label: 'اداره کل',

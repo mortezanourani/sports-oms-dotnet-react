@@ -1,8 +1,6 @@
-import { Tabs, Select, Typography, Button } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { Tabs, Select, Typography } from 'antd';
 import { useState } from 'react';
 import { useGeoSections } from '../../../hooks/useGeoSections';
-import { canManageNational } from '../../../utils/federationPermissions';
 import FederationMasteryTable from './FederationMasteryTable'; // the previous nested-expandable table, renamed
 import FederationsFlatTable from './FederationsFlatTable';
 import FederationFormModal from './FederationFormModal';
@@ -63,7 +61,7 @@ export default function FederationsList() {
                 <Title level={4}>فدراسیون‌ها</Title>
             </div>
             <Tabs items={items} />
-            <FederationFormModal level="National" open={createOpen} onClose={() => setCreateOpen(false)} />
+            <FederationFormModal level="Mastery" open={createOpen} onClose={() => setCreateOpen(false)} />
         </div>
     );
 }

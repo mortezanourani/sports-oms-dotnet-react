@@ -21,10 +21,13 @@ const { Text } = Typography;
 const ROLE_MENU = {
     Admin: ['facilities', 'champions', 'federations', 'athletes', 'locations', 'users', 'messages'],
     Manager: ['facilities', 'champions', 'federations', 'athletes', 'users', 'messages'],
+    M88Manager: ['facilities', 'messages'],
     M88Officer: ['facilities', 'messages'],
+    M5Manager: ['facilities', 'messages'],
     M5Officer: ['facilities', 'messages'],
     InsuranceOfficer: ['athletes', 'messages'],
-    SportOfficer: ['champions', 'federations', 'messages'],
+    SportsManager: ['champions', 'federations', 'messages'],
+    SportsOfficer: ['champions', 'federations', 'messages'],
     FederationRep: ['messages'],
 };
 
@@ -33,6 +36,7 @@ const SCOPE_RESTRICTION = {
     Province: ['locations'],
     City: ['locations', 'users'],
 }
+
 export default function DashboardLayout() {
     const [collapsed, setCollapsed] = useState(false);
     const { role, scopeLevel, fullName } = useAuth();

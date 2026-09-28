@@ -28,7 +28,7 @@ export default function CityFederationsPanel({ provincialFederation }) {
     // to show the "add" button. The actual target city is chosen inside the
     // modal; this is just "is there any point showing the button."
     const canCreateHere =
-        auth.scopeLevel === 'National' ||
+        auth.scopeLevel === 'Mastery' ||
         (auth.scopeLevel === 'Province' && auth.scopeProvinceId === provincialFederation.provinceId) ||
         auth.scopeLevel === 'City';
 
