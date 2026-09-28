@@ -35,8 +35,8 @@ namespace Backend.Controllers
         private bool IsM5Officer() => User.Role() == "M5Officer";
 
         private bool HasFacilityDeletePermission() => IsAdminOrManager() || IsM5Manager() || IsM88Manager();
-        private bool HasContractDeletePermission() => IsM88Manager();
-        private bool HasLicenseDeletePermission() => IsM5Manager();
+        private bool HasContractDeletePermission() => IsAdminOrManager() || IsM88Manager();
+        private bool HasLicenseDeletePermission() => IsAdminOrManager() || IsM5Manager();
 
         private bool CanManageScope(string targetScopeLevel)
         {
@@ -61,30 +61,6 @@ namespace Backend.Controllers
         {
             var role = User.Role();
             return role is "Admin" or "Manager" or "M88Manager" or "M88Officer" or "M5Manager" or "M5Officer";
-        }
-
-        // Check if user's role allows managing this facility type
-        private bool CanManageFacilityType(string facilityType, bool requireDelete = false)
-        {
-            var role = User.Role();
-
-            if (role == "Admin" || role == "Manager")
-            {
-                return true; // Admin/Manager can manage all types
-            }
-
-            if (role == "M88Manager" || role == "M88Officer")
-            {
-                return facilityType == "Msy";
-            }
-
-            if (role == "M5Manager" || role == "M5Officer")
-            {
-                // M5 users can only create/update/delete Private and Gov facilities
-                return facilityType is "Private" or "Gov";
-            }
-
-            return false;
         }
 
         // Check if user can access a specific facility based on role and type
@@ -146,7 +122,7 @@ namespace Backend.Controllers
             return false;
         }
 
-        // Check if user can perform write operation on facility based on type
+        // Check if user can write to facility based on type (for create/update)
         private bool CanWriteFacilityType(Facility facility)
         {
             var role = User.Role();
@@ -165,6 +141,64 @@ namespace Backend.Controllers
             {
                 // Can only write Private and Gov facilities
                 return facility.FacilityType is FacilityType.Private or FacilityType.Gov;
+            }
+
+            return false;
+        }
+
+        // Helper to check if user can access contracts for a facility
+        private bool CanAccessFacilityContractsLicenses(Facility facility)
+        {
+            var role = User.Role();
+
+            // Admin/Manager have full access with scope limitations
+            if (role == "Admin" || role == "Manager")
+            {
+                var myScopeLevel = User.ScopeLevel();
+                if (myScopeLevel == "Mastery") return true;
+                if (myScopeLevel == "Province")
+                {
+                    return facility.City.ProvinceId == User.ScopeProvinceId();
+                }
+                if (myScopeLevel == "City")
+                {
+                    return facility.CityId == User.ScopeCityId();
+                }
+            }
+
+            // M88 users need MSY facilities for contracts
+            if (role == "M88Manager" || role == "M88Officer")
+            {
+                return facility.FacilityType == FacilityType.Msy && CanAccessFacility(facility);
+            }
+
+            return false;
+        }
+
+        // Helper to check if user can access licenses for a facility
+        private bool CanAccessFacilityLicenses(Facility facility)
+        {
+            var role = User.Role();
+
+            // Admin/Manager have full access with scope limitations
+            if (role == "Admin" || role == "Manager")
+            {
+                var myScopeLevel = User.ScopeLevel();
+                if (myScopeLevel == "Mastery") return true;
+                if (myScopeLevel == "Province")
+                {
+                    return facility.City.ProvinceId == User.ScopeProvinceId();
+                }
+                if (myScopeLevel == "City")
+                {
+                    return facility.CityId == User.ScopeCityId();
+                }
+            }
+
+            // M5 users need Private/Gov facilities for licenses
+            if (role == "M5Manager" || role == "M5Officer")
+            {
+                return (facility.FacilityType is FacilityType.Private or FacilityType.Gov) && CanAccessFacility(facility);
             }
 
             return false;
@@ -328,7 +362,7 @@ namespace Backend.Controllers
 
             if (facility == null) return NotFound();
 
-            if (!CanAccessFacility(facility))
+            if (!CanAccessFacilityContractsLicenses(facility))
                 return Forbid("شما اجازه مشاهده قراردادهای این مکان را ندارید");
 
             var contracts = await _db.FacilityContracts
@@ -358,7 +392,7 @@ namespace Backend.Controllers
 
             if (facility == null) return NotFound();
 
-            if (!CanAccessFacility(facility))
+            if (!CanAccessFacilityContractsLicenses(facility))
                 return Forbid("شما اجازه مشاهده این قرارداد را ندارید");
 
             var contract = await _db.FacilityContracts
@@ -384,16 +418,11 @@ namespace Backend.Controllers
             var facility = await _db.Facilities.FindAsync(facilityId);
             if (facility == null) return NotFound();
 
-            if (!CanAccessFacility(facility))
+            if (!CanAccessFacilityContractsLicenses(facility))
                 return Forbid("شما اجازه ایجاد قرارداد برای این مکان را ندارید");
 
-            // Only M88Manager and M88Officer can create contracts
-            var role = User.Role();
-            if (role != "M88Manager" && role != "M88Officer")
-                return Forbid("شما اجازه ایجاد قرارداد ندارید");
-
             // M88 officers can only create for MSY facilities
-            if (role == "M88Officer" && facility.FacilityType != FacilityType.Msy)
+            if (User.Role() == "M88Officer" && facility.FacilityType != FacilityType.Msy)
                 return Forbid("شما فقط مجاز به ایجاد قرارداد برای اماکن MSY هستید");
 
             var contract = new FacilityContract
@@ -419,7 +448,7 @@ namespace Backend.Controllers
             var facility = await _db.Facilities.FindAsync(facilityId);
             if (facility == null) return NotFound();
 
-            if (!CanAccessFacility(facility))
+            if (!CanAccessFacilityContractsLicenses(facility))
                 return Forbid("شما اجازه ویرایش این قرارداد را ندارید");
 
             var contract = await _db.FacilityContracts
@@ -427,13 +456,8 @@ namespace Backend.Controllers
 
             if (contract == null) return NotFound();
 
-            // Only M88Manager and M88Officer can update contracts
-            var role = User.Role();
-            if (role != "M88Manager" && role != "M88Officer")
-                return Forbid("شما اجازه ویرایش قرارداد ندارید");
-
             // M88 officers can only update for MSY facilities
-            if (role == "M88Officer" && facility.FacilityType != FacilityType.Msy)
+            if (User.Role() == "M88Officer" && facility.FacilityType != FacilityType.Msy)
                 return Forbid("شما فقط مجاز به ویرایش قرارداد برای اماکن MSY هستید");
 
             contract.ThirdPartyName = dto.ThirdPartyName ?? string.Empty;
@@ -452,7 +476,7 @@ namespace Backend.Controllers
             var facility = await _db.Facilities.FindAsync(facilityId);
             if (facility == null) return NotFound();
 
-            if (!CanAccessFacility(facility))
+            if (!CanAccessFacilityContractsLicenses(facility))
                 return Forbid("شما اجازه حذف این قرارداد را ندارید");
 
             if (!HasContractDeletePermission())
@@ -462,6 +486,10 @@ namespace Backend.Controllers
                 .FirstOrDefaultAsync(c => c.FacilityId == facilityId && c.Id == contractId);
 
             if (contract == null) return NotFound();
+
+            // M88 officers cannot delete
+            if (User.Role() == "M88Officer")
+                return Forbid("شما اجازه حذف قرارداد ندارید");
 
             _db.FacilityContracts.Remove(contract);
             await _db.SaveChangesAsync();
@@ -478,7 +506,7 @@ namespace Backend.Controllers
 
             if (facility == null) return NotFound();
 
-            if (!CanAccessFacility(facility))
+            if (!CanAccessFacilityLicenses(facility))
                 return Forbid("شما اجازه مشاهده لایسنس‌های این مکان را ندارید");
 
             var licenses = await _db.FacilityLicenses
@@ -508,7 +536,7 @@ namespace Backend.Controllers
 
             if (facility == null) return NotFound();
 
-            if (!CanAccessFacility(facility))
+            if (!CanAccessFacilityLicenses(facility))
                 return Forbid("شما اجازه مشاهده این لایسنس را ندارید");
 
             var license = await _db.FacilityLicenses
@@ -534,16 +562,11 @@ namespace Backend.Controllers
             var facility = await _db.Facilities.FindAsync(facilityId);
             if (facility == null) return NotFound();
 
-            if (!CanAccessFacility(facility))
+            if (!CanAccessFacilityLicenses(facility))
                 return Forbid("شما اجازه ایجاد لایسنس برای این مکان را ندارید");
 
-            // Only M5Manager and M5Officer can create licenses
-            var role = User.Role();
-            if (role != "M5Manager" && role != "M5Officer")
-                return Forbid("شما اجازه ایجاد لایسنس ندارید");
-
             // M5 officers can only create for Private/Gov facilities
-            if (role == "M5Officer" && facility.FacilityType is not (FacilityType.Private or FacilityType.Gov))
+            if (User.Role() == "M5Officer" && facility.FacilityType is not (FacilityType.Private or FacilityType.Gov))
                 return Forbid("شما فقط مجاز به ایجاد لایسنس برای اماکن خصوصی/دولتی هستید");
 
             var license = new FacilityLicense
@@ -569,21 +592,16 @@ namespace Backend.Controllers
             var facility = await _db.Facilities.FindAsync(facilityId);
             if (facility == null) return NotFound();
 
-            if (!CanAccessFacility(facility))
-                return Forbid("��ما اجازه ویرایش این لایسنس را ندارید");
+            if (!CanAccessFacilityLicenses(facility))
+                return Forbid("شما اجازه ویرایش این لایسنس را ندارید");
 
             var license = await _db.FacilityLicenses
                 .FirstOrDefaultAsync(l => l.FacilityId == facilityId && l.Id == licenseId);
 
             if (license == null) return NotFound();
 
-            // Only M5Manager and M5Officer can update licenses
-            var role = User.Role();
-            if (role != "M5Manager" && role != "M5Officer")
-                return Forbid("شما اجازه ویرایش لایسنس ندارید");
-
             // M5 officers can only update for Private/Gov facilities
-            if (role == "M5Officer" && facility.FacilityType is not (FacilityType.Private or FacilityType.Gov))
+            if (User.Role() == "M5Officer" && facility.FacilityType is not (FacilityType.Private or FacilityType.Gov))
                 return Forbid("شما فقط مجاز به ویرایش لایسنس برای اماکن خصوصی/دولتی هستید");
 
             license.LicenseNumber = dto.LicenseNumber ?? string.Empty;
@@ -602,7 +620,7 @@ namespace Backend.Controllers
             var facility = await _db.Facilities.FindAsync(facilityId);
             if (facility == null) return NotFound();
 
-            if (!CanAccessFacility(facility))
+            if (!CanAccessFacilityLicenses(facility))
                 return Forbid("شما اجازه حذف این لایسنس را ندارید");
 
             if (!HasLicenseDeletePermission())
@@ -612,6 +630,10 @@ namespace Backend.Controllers
                 .FirstOrDefaultAsync(l => l.FacilityId == facilityId && l.Id == licenseId);
 
             if (license == null) return NotFound();
+
+            // M5 officers cannot delete
+            if (User.Role() == "M5Officer")
+                return Forbid("شما اجازه حذف لایسنس ندارید");
 
             _db.FacilityLicenses.Remove(license);
             await _db.SaveChangesAsync();
