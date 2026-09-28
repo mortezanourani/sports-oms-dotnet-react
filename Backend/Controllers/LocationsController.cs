@@ -35,25 +35,21 @@ namespace Backend.Controllers
         {
             var query = _db.Provinces.AsQueryable();
 
-            if (!IsAdmin())
+            // Scope filtering based on role
+            var myScope = User.ScopeLevel();
+            var myProvinceId = User.ScopeProvinceId();
+            var myCityId = User.ScopeCityId();
+
+            if (myScope == "Province")
             {
-                // Non-admins: read-only based on scope
-                if (IsMasteryScope())
-                {
-                    // Mastery can see all provinces
-                }
-                else if (IsProvinceScope())
-                {
-                    var myProvinceId = User.ScopeProvinceId();
-                    query = query.Where(p => p.Id == myProvinceId);
-                }
-                else if (IsCityScope())
-                {
-                    var myProvinceId = User.ScopeProvinceId();
-                    query = query.Where(p => p.Id == myProvinceId);
-                }
+                // Province scope: can only see their own province
+                query = query.Where(p => p.Id == myProvinceId);
             }
-            // Admins can see all provinces (no scope restriction)
+            else if (myScope == "City")
+            {
+                // City scope: can only see their own province
+                query = query.Where(p => p.Id == myProvinceId);
+            }
 
             var provinces = await query
                 .OrderBy(p => p.Name)
@@ -134,40 +130,20 @@ namespace Backend.Controllers
         {
             var query = _db.Cities.Include(c => c.Province).AsQueryable();
 
-            if (!IsAdmin())
+            // Scope filtering based on role
+            var myScope = User.ScopeLevel();
+            var myProvinceId = User.ScopeProvinceId();
+            var myCityId = User.ScopeCityId();
+
+            if (myScope == "Province")
             {
-                // Non-admins: read-only based on scope
-                if (IsMasteryScope())
-                {
-                    // Mastery can see all cities
-                }
-                else if (IsProvinceScope())
-                {
-                    var myProvinceId = User.ScopeProvinceId();
-                    query = query.Where(c => c.ProvinceId == myProvinceId);
-                }
-                else if (IsCityScope())
-                {
-                    var myCityId = User.ScopeCityId();
-                    query = query.Where(c => c.Id == myCityId);
-                }
+                // Province scope: can see all cities in their province
+                query = query.Where(c => c.ProvinceId == myProvinceId);
             }
-            else
+            else if (myScope == "City")
             {
-                // Admins: scope-based filtering
-                if (IsProvinceScope())
-                {
-                    // Province Admin can see all cities in their province
-                    var myProvinceId = User.ScopeProvinceId();
-                    query = query.Where(c => c.ProvinceId == myProvinceId);
-                }
-                else if (IsCityScope())
-                {
-                    // City Admin can see only their own city
-                    var myCityId = User.ScopeCityId();
-                    query = query.Where(c => c.Id == myCityId);
-                }
-                // Mastery Admin: can see all cities (no filter)
+                // City scope: can see only their own city
+                query = query.Where(c => c.Id == myCityId);
             }
 
             if (provinceId.HasValue)
