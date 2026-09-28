@@ -16,7 +16,7 @@ export default function Login() {
         setLoading(true);
         try {
             await login(values.username, values.password);
-            navigate('/dashboard/facilities');
+            navigate('/dashboard/messages');
         } catch (err) {
             setError(err.response?.data?.detail || 'نام کاربری یا رمز عبور اشتباه است');
         } finally {

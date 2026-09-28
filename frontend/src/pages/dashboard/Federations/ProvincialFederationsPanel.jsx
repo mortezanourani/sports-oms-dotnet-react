@@ -24,12 +24,12 @@ export default function ProvincialFederationsPanel({ nationalFederation }) {
         }
     };
 
-    // A National or Province-scoped user can always find SOME province to
-    // create under (National sees everything; Province-scoped always has
+    // A Mastery or Province-scoped user can always find SOME province to
+    // create under (Mastery sees everything; Province-scoped always has
     // exactly their own) — only a City-scoped user can never create at this
     // level at all, matching the backend's CanManageProvincial, which
     // returns false unconditionally for City scope.
-    const canCreateHere = auth.scopeLevel === 'National' || auth.scopeLevel === 'Province';
+    const canCreateHere = auth.scopeLevel === 'Mastery' || auth.scopeLevel === 'Province';
 
     const columns = [
         { title: 'نام', dataIndex: 'displayName' },

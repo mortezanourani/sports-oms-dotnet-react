@@ -28,7 +28,7 @@ export default function UsersList({ filters }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [positionUser, setPositionUser] = useState(null);
-  const [scopeLevel, setScopeLevel] = useState('National');
+  const [scopeLevel, setScopeLevel] = useState('Mastery');
   const [selectedProvinceId, setSelectedProvinceId] = useState(null);
   const [form] = Form.useForm();
 
@@ -53,7 +53,7 @@ export default function UsersList({ filters }) {
 
   const openCreate = () => {
     setEditingId(null);
-    setScopeLevel('National');
+    setScopeLevel('Mastery');
     setSelectedProvinceId(null);
     form.resetFields();
     setModalOpen(true);
@@ -72,7 +72,7 @@ export default function UsersList({ filters }) {
     // though ValidateScopeAsync on the backend would catch a mismatch anyway.
     const payload = {
       ...values,
-      scopeProvinceId: scopeLevel === 'National' ? null : values.scopeProvinceId,
+      scopeProvinceId: scopeLevel === 'Mastery' ? null : values.scopeProvinceId,
       scopeCityId: scopeLevel === 'City' ? values.scopeCityId : null,
     };
 
@@ -173,7 +173,7 @@ export default function UsersList({ filters }) {
           <Form.Item name="scopeLevel" label="سطح دسترسی جغرافیایی" rules={[{ required: true }]}>
             <Select
               options={Object.entries(SCOPE_LEVEL_LABELS)
-                  .filter(([value]) => geo.provinceLocked ? value !== 'National' : true)
+                  .filter(([value]) => geo.provinceLocked ? value !== 'Mastery' : true)
                   .map(([value, label]) => ({ value, label }))}
               onChange={(val) => {
                 setScopeLevel(val);
@@ -186,7 +186,7 @@ export default function UsersList({ filters }) {
 
           {/* Conditional fields — only rendered when relevant to the
               selected scope level, rather than shown-but-disabled, since
-              a National-scope user having a visible-but-greyed-out
+              a Mastery-scope user having a visible-but-greyed-out
               province field would be more confusing than just not
               showing it at all. */}
           {(scopeLevel === 'Province' || scopeLevel === 'City') && (

@@ -38,15 +38,18 @@ export const PERSIAN_MONTHS = [
 export const ROLE_LABELS = {
   Admin: 'مدیر سامانه',
   Manager: 'مدیر',
-  M88Officer: 'کارشناس M88',
-  M5Officer: 'کارشناس M5',
-  InsuranceOfficer: 'کارشناس بیمه',
-  SportOfficer: 'کارشناس ورزش',
+  M88Manager: 'مسئول ماده 88',
+  M88Officer: 'کارشناس ماده 88',
+  M5Manager: 'مسئول امور باشگاه‌ها',
+  M5Officer: 'کارشناس امور باشگاه‌ها',
+  InsuranceOfficer: 'کارشناس بیمه ورزشی',
+  SportsManager: 'معاون ورزشی',
+  SportsOfficer: 'کارشناس ورزش',
   FederationRep: 'نماینده فدراسیون/هیات'
 };
 
 export const SCOPE_LEVEL_LABELS = {
-  National: 'وزارت',
+  Mastery: 'وزارت',
   Province: 'اداره کل',
   City: 'شهرستان'
 };
@@ -59,7 +62,7 @@ export const FEDERATION_CATEGORY_LABELS = {
 };
 
 export const FEDERATION_LEVEL_LABELS = {
-    National: 'کشوری',
+    Mastery: 'کشوری',
     Provincial: 'استانی',
     City: 'شهری'
 };
