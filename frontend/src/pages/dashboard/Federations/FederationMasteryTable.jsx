@@ -13,7 +13,7 @@ const { Title } = Typography;
 
 export default function FederationsList() {
     const auth = useAuth();
-    const { data: federations, isLoading } = useFederations({ level: 'Mastery' });
+    const { data: federations, isLoading } = useFederations({ level: 'National' });
     const deleteMutation = useDeleteFederation();
     const [createOpen, setCreateOpen] = useState(false);
     const [positionsFederation, setPositionsFederation] = useState(null);
@@ -90,7 +90,7 @@ export default function FederationsList() {
                     </Form.Item>
                 </Form>
             </Modal>
-            <FederationFormModal level="Mastery" open={createOpen} onClose={() => setCreateOpen(false)} />
+            <FederationFormModal level="National" open={createOpen} onClose={() => setCreateOpen(false)} />
             <PositionsModal federation={positionsFederation} open={!!positionsFederation} onClose={() => setPositionsFederation(null)} />
         </div>
     );

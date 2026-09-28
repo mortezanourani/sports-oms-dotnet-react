@@ -19,13 +19,13 @@ export default function FederationFormModal({ level, parentFederation, targetPro
     const { data: provinces } = useProvinces();
     const { data: cities } = useCities(selectedProvinceId);
 
-    const needsParentPicker = !parentFederation && level !== 'Mastery';
+    const needsParentPicker = !parentFederation && level !== 'National';
 
     // Only fetched when actually needed — a Provincial-level modal needs
     // Mastery federations to choose from; a City-level modal needs
     // Provincial federations scoped to the already-known province.
     const { data: nationalOptions } = useFederations(
-        needsParentPicker && level === 'Provincial' ? { level: 'Mastery' } : undefined
+        needsParentPicker && level === 'Provincial' ? { level: 'National' } : undefined
     );
     const { data: provincialOptions } = useFederations(
         needsParentPicker && level === 'City' ? { level: 'Provincial', provinceId: targetProvinceId } : undefined
@@ -55,8 +55,8 @@ export default function FederationFormModal({ level, parentFederation, targetPro
 
     const handleFinish = async (values) => {
         let payload;
-        if (level === 'Mastery') {
-            payload = { level: 'Mastery', name: values.name, category: values.category };
+        if (level === 'National') {
+            payload = { level: 'National', name: values.name, category: values.category };
         } else if (level === 'Provincial') {
             const parentId = parentFederation ? parentFederation.id : values.parentFederationId;
             payload = { level: 'Provincial', parentFederationId: parentId, provinceId: values.provinceId };
@@ -97,7 +97,7 @@ export default function FederationFormModal({ level, parentFederation, targetPro
             destroyOnClose
         >
             <Form form={form} layout="vertical" onFinish={handleFinish}>
-                {level === 'Mastery' && (
+                {level === 'National' && (
                     <>
                         <Form.Item name="name" label="نام فدراسیون" rules={[{ required: true }]}>
                             <Input />
