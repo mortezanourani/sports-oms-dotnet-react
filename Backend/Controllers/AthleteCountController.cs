@@ -5,6 +5,7 @@ using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
 using Backend.Services;
+using Backend.Extensions;
 
 namespace Backend.Controllers
 {
@@ -22,10 +23,48 @@ namespace Backend.Controllers
             _scope = scope;
         }
 
+        // Helper methods for scope validation
+        private bool IsAdmin() => User.Role() == "Admin";
+        private bool IsManager() => User.Role() == "Manager";
+        private bool IsInsuranceOfficer() => User.Role() == "InsuranceOfficer";
+        private bool IsSportsManager() => User.Role() == "SportsManager";
+        private bool IsSportsOfficer() => User.Role() == "SportsOfficer";
+
+        private bool HasFullAccess() => IsAdmin() || IsManager() || IsInsuranceOfficer();
+        private bool CanRead() => HasFullAccess() || IsSportsManager() || IsSportsOfficer();
+        private bool CanCreate() => HasFullAccess();
+        private bool CanUpdate() => HasFullAccess();
+        private bool CanDelete() => HasFullAccess();
+
+        // Scope validation helper
+        private bool IsInAllowedScope(string targetScopeLevel, Guid? targetProvinceId, Guid? targetCityId)
+        {
+            var myScope = User.ScopeLevel();
+
+            if (myScope == "Mastery")
+            {
+                return true;
+            }
+            else if (myScope == "Province")
+            {
+                if (!targetProvinceId.HasValue) return false;
+                return targetScopeLevel is "Province" or "City" && targetProvinceId == User.ScopeProvinceId();
+            }
+            else if (myScope == "City")
+            {
+                return targetScopeLevel == "City" && targetCityId == User.ScopeCityId();
+            }
+
+            return false;
+        }
+
         [HttpGet]
         public async Task<IActionResult> List(
             Guid? federationId, int? year, string? gender, Guid? provinceId, Guid? cityId, int page = 1, int pageSize = 20)
         {
+            if (!CanRead())
+                return Forbid("شما اجازه مشاهده آمار ورزشکاران را ندارید");
+
             var qs = _db.AthleteCounts
                 .Include(a => a.Federation)
                 .Include(a => a.City).ThenInclude(c => c.Province)
@@ -44,7 +83,32 @@ namespace Backend.Controllers
             if (cityId.HasValue) qs = qs.Where(a => a.CityId == cityId.Value);
             else if (provinceId.HasValue) qs = qs.Where(a => a.City.ProvinceId == provinceId.Value);
             
-            qs = _scope.FilterAthleteCounts(qs, User);
+            // Apply scope filtering based on role
+            if (HasFullAccess())
+            {
+                // Admin, Manager, InsuranceOfficer: use their scope service
+                qs = _scope.FilterAthleteCounts(qs, User);
+            }
+            else
+            {
+                // SportsManager, SportsOfficer: read-only with scope restriction
+                var myScope = User.ScopeLevel();
+                var myProvinceId = User.ScopeProvinceId();
+                var myCityId = User.ScopeCityId();
+
+                if (myScope == "Mastery")
+                {
+                    // Can see all (no filter needed)
+                }
+                else if (myScope == "Province")
+                {
+                    qs = qs.Where(a => a.City.ProvinceId == myProvinceId);
+                }
+                else if (myScope == "City")
+                {
+                    qs = qs.Where(a => a.CityId == myCityId);
+                }
+            }
 
             var count = await qs.CountAsync();
             var items = await qs
@@ -63,12 +127,35 @@ namespace Backend.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> Get(Guid id)
         {
+            if (!CanRead())
+                return Forbid("شما اجازه مشاهده آمار ورزشکاران را ندارید");
+
             var a = await _db.AthleteCounts
                 .Include(x => x.Federation)
                 .Include(x => x.City).ThenInclude(c => c.Province)
                 .FirstOrDefaultAsync(x => x.Id == id);
 
             if (a == null) return NotFound(new { detail = "رکورد یافت نشد" });
+
+            // Scope validation for SportsManager/SportsOfficer
+            if (IsSportsManager() || IsSportsOfficer())
+            {
+                var myScope = User.ScopeLevel();
+                if (myScope == "Mastery")
+                {
+                    // Can read all
+                }
+                else if (myScope == "Province")
+                {
+                    if (a.City.ProvinceId != User.ScopeProvinceId())
+                        return Forbid("شما اجازه مشاهده این رکورد را ندارید");
+                }
+                else if (myScope == "City")
+                {
+                    if (a.CityId != User.ScopeCityId())
+                        return Forbid("شما اجازه مشاهده این رکورد را ندارید");
+                }
+            }
 
             return Ok(new AthleteCountOutDto(
                 a.Id, a.FederationId, a.Federation.Name!,
@@ -80,6 +167,9 @@ namespace Backend.Controllers
         [Authorize(Roles = "Admin,Manager,InsuranceOfficer")]
         public async Task<IActionResult> Create(AthleteCountCreateDto dto)
         {
+            if (!CanCreate())
+                return Forbid("شما اجازه ایجاد آمار ورزشکاران را ندارید");
+
             if (dto.Month < 1 || dto.Month > 12)
                 return BadRequest(new { detail = "ماه باید بین ۱ تا ۱۲ باشد" });
             if (dto.Count < 0)
@@ -126,6 +216,9 @@ namespace Backend.Controllers
         [Authorize(Roles = "Admin,Manager,InsuranceOfficer")]
         public async Task<IActionResult> Update(Guid id, AthleteCountUpdateDto dto)
         {
+            if (!CanUpdate())
+                return Forbid("شما اجازه ویرایش آمار ورزشکاران را ندارید");
+
             var athleteCount = await _db.AthleteCounts.FindAsync(id);
             if (athleteCount == null)
                 return NotFound(new { detail = "رکورد یافت نشد" });
@@ -146,6 +239,9 @@ namespace Backend.Controllers
         [Authorize(Roles = "Admin,Manager,InsuranceOfficer")]
         public async Task<IActionResult> Delete(Guid id)
         {
+            if (!CanDelete())
+                return Forbid("شما اجازه حذف آمار ورزشکاران را ندارید");
+
             var athleteCount = await _db.AthleteCounts.FindAsync(id);
             if (athleteCount == null)
                 return NotFound(new { detail = "رکورد یافت نشد" });
