@@ -61,7 +61,7 @@ export default function FederationsList() {
                 <Title level={4}>فدراسیون‌ها</Title>
             </div>
             <Tabs items={items} />
-            <FederationFormModal level="Mastery" open={createOpen} onClose={() => setCreateOpen(false)} />
+            <FederationFormModal level="National" open={createOpen} onClose={() => setCreateOpen(false)} />
         </div>
     );
 }

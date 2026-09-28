@@ -28,8 +28,8 @@ const ROLE_MENU = {
     M5Manager: ['facilities', 'messages'],
     M5Officer: ['facilities', 'messages'],
     InsuranceOfficer: ['athletes', 'messages'],
-    SportsManager: ['champions', 'federations', 'messages'],
-    SportsOfficer: ['champions', 'federations', 'messages'],
+    SportsManager: ['champions', 'federations', 'users', 'messages'],
+    SportsOfficer: ['champions', 'federations', 'users', 'messages'],
     FederationRep: ['messages'],
 };
 
