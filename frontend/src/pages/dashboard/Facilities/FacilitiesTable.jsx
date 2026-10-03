@@ -102,7 +102,6 @@ export default function FacilitiesTable({ filters }) {
     return (
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                <Title level={4}>اماکن ورزشی</Title>
                 <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>افزودن مکان جدید</Button>
             </div>
 

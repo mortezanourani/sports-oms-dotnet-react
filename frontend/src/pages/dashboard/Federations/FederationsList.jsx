@@ -57,9 +57,7 @@ export default function FederationsList() {
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                <Title level={4}>فدراسیون‌ها</Title>
-            </div>
+            <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>فدراسیون‌ها</Title>
             <Tabs items={items} />
             <FederationFormModal level="National" open={createOpen} onClose={() => setCreateOpen(false)} />
         </div>

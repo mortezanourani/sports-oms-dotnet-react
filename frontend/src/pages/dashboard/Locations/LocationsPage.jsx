@@ -74,7 +74,7 @@ export default function LocationsPage() {
     return (
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                <Title level={4}>استان‌ها و شهرها</Title>
+                <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>استان‌ها و شهرها</Title>
                 <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>افزودن استان جدید</Button>
             </div>
 

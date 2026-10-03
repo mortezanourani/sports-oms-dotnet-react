@@ -68,12 +68,9 @@ export default function FederationsList() {
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                <Title level={4}>فدراسیون‌ها</Title>
-                {canManageMastery(auth) && (
-                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>افزودن فدراسیون کشوری</Button>
-                )}
-            </div>
+            {canManageMastery(auth) && (
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>افزودن فدراسیون کشوری</Button>
+            )}
 
             <Table
                 rowKey="id" columns={columns} dataSource={federations} loading={isLoading} pagination={false}
