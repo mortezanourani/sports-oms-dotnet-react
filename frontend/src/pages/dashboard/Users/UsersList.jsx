@@ -56,7 +56,7 @@ export default function UsersList() {
 
   return (
       <div>
-        <Title level={4}>کاربران</Title>
+        <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>کاربران</Title>
         <Tabs items={items} />
       </div>
   );

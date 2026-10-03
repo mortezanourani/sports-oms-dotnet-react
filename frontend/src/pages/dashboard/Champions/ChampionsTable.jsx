@@ -96,9 +96,7 @@ export default function ChampionsTable({ filters }) {
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>افزودن قهرمان جدید</Button>
-            </div>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>افزودن قهرمان جدید</Button>
 
             <Table
                 rowKey="id"

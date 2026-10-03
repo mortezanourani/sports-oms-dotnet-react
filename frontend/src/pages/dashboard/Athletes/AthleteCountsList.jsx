@@ -46,7 +46,7 @@ export default function AthleteCountsList() {
 
   return (
       <div>
-        <Title level={4}>آمار ورزشکاران</Title>
+        <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>آمار ورزشکاران</Title>
         <Tabs items={items} />
       </div>
   );

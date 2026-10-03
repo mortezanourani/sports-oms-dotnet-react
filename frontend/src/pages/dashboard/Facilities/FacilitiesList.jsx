@@ -49,7 +49,7 @@ export default function FacilitiesList() {
 
     return (
         <div>
-            <Title level={4}>اماکن ورزشی</Title>
+            <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>اماکن ورزشی</Title>
             <Tabs items={items} />
         </div>
     );

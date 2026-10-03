@@ -45,7 +45,7 @@ export default function MessagesPage() {
     return (
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                <Title level={4}>پیام‌ها</Title>
+                <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>پیام‌ها</Title>
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => setComposeOpen(true)}>پیام جدید</Button>
             </div>
 

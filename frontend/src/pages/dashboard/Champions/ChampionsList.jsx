@@ -46,7 +46,7 @@ export default function ChampionsList() {
 
     return (
         <div>
-            <Title level={4}>قهرمانان</Title>
+            <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>قهرمانان</Title>
             <Tabs items={items} />
         </div>
     );
