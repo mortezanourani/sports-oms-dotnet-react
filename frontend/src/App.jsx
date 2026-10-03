@@ -19,6 +19,7 @@ export default function App() {
       <Routes>
         <Route element={<PublicLayout />}>
           <Route path="/" element={<AthleteStats />} />
+          <Route path="/athletes" element={<AthleteStats />} />
           <Route path="/champions" element={<ChampionStats />} />
           <Route path="/facilities" element={<FacilityStats />} />
           <Route path="/login" element={<Login />} />
