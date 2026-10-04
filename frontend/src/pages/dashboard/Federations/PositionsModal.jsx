@@ -1,9 +1,13 @@
-import { Modal, Table, Tag } from 'antd';
+import { useState } from 'react';
+import { Modal, Table, Tag, Button } from 'antd';
 import { useFederationPositions } from '../../../hooks/useFederations';
 import { FEDERATION_POSITION_LABELS } from '../../../constants/labels';
+import AddPositionModal from './AddPositionModal';
 
 export default function PositionsModal({ federation, open, onClose }) {
-  const { data: positions, isLoading } = useFederationPositions(federation?.id);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  const { data: positions, isLoading, refetch } = useFederationPositions(federation?.id);
 
   const columns = [
     { title: 'سمت', dataIndex: 'position', render: (v) => FEDERATION_POSITION_LABELS[v] || v },
@@ -15,25 +19,47 @@ export default function PositionsModal({ federation, open, onClose }) {
     },
   ];
 
+  const handleAddPosition = () => {
+    setIsAddModalOpen(true);
+  };
+
+  const handleAddModalClose = () => {
+    setIsAddModalOpen(false);
+    // Refetch positions after closing the add modal
+    refetch();
+  };
+
   return (
-    <Modal
-      title={federation ? `سوابق مسئولین فدراسیون ${federation.displayName}` : 'سوابق مسئولین'}
-      open={open}
-      onCancel={onClose}
-      footer={null}
-      width={700}
-    >
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={positions}
-        loading={isLoading}
-        pagination={false}
-        locale={{ emptyText: 'سابقه‌ای ثبت نشده است' }}
+    <>
+      <Modal
+        title={federation ? `سوابق مسئولین فدراسیون ${federation.displayName}` : 'سوابق مسئولین'}
+        open={open}
+        onCancel={onClose}
+        footer={null}
+        width={700}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Button type="primary" onClick={handleAddPosition}>
+            افزودن سمت جدید
+          </Button>
+        </div>
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={positions}
+          loading={isLoading}
+          pagination={false}
+          locale={{ emptyText: 'سابقه‌ای ثبت نشده است' }}
+        />
+        <div style={{ marginTop: 12, color: '#888', fontSize: 13 }}>
+          برای تغییر مسئولین، به بخش «کاربران» مراجعه کنید.
+        </div>
+      </Modal>
+      <AddPositionModal 
+        federation={federation} 
+        open={isAddModalOpen} 
+        onClose={handleAddModalClose} 
       />
-      <div style={{ marginTop: 12, color: '#888', fontSize: 13 }}>
-        برای تغییر مسئولین، به بخش «کاربران» مراجعه کنید.
-      </div>
-    </Modal>
+    </>
   );
 }

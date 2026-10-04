@@ -16,6 +16,14 @@ export function useUser(id) {
   });
 }
 
+export function useUserByUsername(username) {
+  return useQuery({
+    queryKey: ['users', 'username', username],
+    queryFn: () => api.getUserByUsername(username),
+    enabled: !!username,
+  });
+}
+
 export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({
