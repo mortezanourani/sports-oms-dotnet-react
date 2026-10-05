@@ -5,6 +5,7 @@ using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
 using Backend.Extensions;
+using Microsoft.AspNetCore.Identity;
 
 namespace Backend.Controllers
 {
@@ -14,7 +15,12 @@ namespace Backend.Controllers
     public class FederationsController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
-        public FederationsController(ApplicationDbContext db) => _db = db;
+        private readonly UserManager<ApplicationUser> _userManager;
+        public FederationsController(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
+        {
+            _db = db;
+            _userManager = userManager;
+        }
 
         // Users who can manage federations (Admin, Manager, SportsManager, SportsOfficer)
         private static readonly string[] FederationManagerRoles = { "Admin", "Manager", "SportsManager", "SportsOfficer" };
@@ -384,6 +390,220 @@ namespace Backend.Controllers
                 .ToListAsync();
 
             return Ok(positions);
+        }
+
+        // FederationRep account management endpoints
+        // These endpoints allow Admin, Manager, SportsManager to create/update/delete FederationRep accounts
+
+        // DTO for creating/updating FederationRep
+        public class FederationRepAssignDto
+        {
+            public string Username { get; set; } = string.Empty;
+            public string? FirstName { get; set; }
+            public string? LastName { get; set; }
+            public string? Password { get; set; }
+        }
+
+        // Get FederationRep accounts for a federation
+        [HttpGet("{id}/federation-reps")]
+        public async Task<IActionResult> GetFederationReps(Guid id)
+        {
+            var federation = await _db.Federations.FindAsync(id);
+            if (federation == null) return NotFound(new { detail = "فurasیون یافت نشد" });
+
+            if (!CanManageFederationRepScope(federation))
+                return Forbid("شما اجازه مشاهده نمایندگان فurasیون در این سطح را ندارید");
+
+            var reps = await _db.Users
+                .Where(u => u.Role == UserRole.FederationRep)
+                .Where(u => 
+                    (federation.Level == FederationLevel.Provincial && u.ScopeLevel == ScopeLevel.Province && u.ScopeProvinceId == federation.ProvinceId) ||
+                    (federation.Level == FederationLevel.City && u.ScopeLevel == ScopeLevel.City && u.ScopeCityId == federation.CityId))
+                .OrderBy(u => u.UserName)
+                .Select(u => new UserOutDto(
+                    u.Id, u.UserName!, u.FirstName ?? "", u.LastName ?? "", u.Role.ToString(), u.ScopeLevel.ToString(),
+                    u.ScopeProvinceId, u.ScopeProvince == null ? null : u.ScopeProvince.Name, u.ScopeCityId, u.ScopeCity == null ? null : u.ScopeCity.Name))
+                .ToListAsync();
+
+            return Ok(reps);
+        }
+
+        // Create or update FederationRep account
+        [HttpPost("{id}/federation-reps")]
+        public async Task<IActionResult> CreateOrUpdateFederationRep(Guid id, FederationRepAssignDto dto)
+        {
+            var federation = await _db.Federations.FindAsync(id);
+            if (federation == null) return NotFound(new { detail = "فurasیون یافت نشد" });
+
+            if (!CanManageFederationRepScope(federation))
+                return Forbid("شما اجازه مدیریت نمایندگان فurasیون در این سطح را ندارید");
+
+            if (string.IsNullOrWhiteSpace(dto.Username))
+                return BadRequest(new { detail = "نام کاربری الزامی است" });
+
+            // Check if user exists
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.UserName == dto.Username);
+            
+            bool isNewUser = false;
+            if (user == null)
+            {
+                // Create new user with FederationRep role
+                user = new ApplicationUser
+                {
+                    UserName = dto.Username,
+                    Email = $"{dto.Username}@local",
+                    FirstName = dto.FirstName ?? "",
+                    LastName = dto.LastName ?? "",
+                    Role = UserRole.FederationRep,
+                    ScopeLevel = federation.Level == FederationLevel.Provincial ? ScopeLevel.Province : ScopeLevel.City,
+                    ScopeProvinceId = federation.ProvinceId,
+                    ScopeCityId = federation.CityId,
+                    EmailConfirmed = true
+                };
+                isNewUser = true;
+            }
+            else
+            {
+                // User exists - update their scope to match federation
+                if (federation.Level == FederationLevel.Provincial)
+                {
+                    user.ScopeLevel = ScopeLevel.Province;
+                    user.ScopeProvinceId = federation.ProvinceId;
+                    user.ScopeCityId = null;
+                }
+                else
+                {
+                    user.ScopeLevel = ScopeLevel.City;
+                    user.ScopeCityId = federation.CityId;
+                    user.ScopeProvinceId = null;
+                }
+
+                // User must have FederationRep role (or update their role)
+                if (user.Role != UserRole.FederationRep)
+                    user.Role = UserRole.FederationRep;
+
+                if (!string.IsNullOrEmpty(dto.FirstName)) user.FirstName = dto.FirstName;
+                if (!string.IsNullOrEmpty(dto.LastName)) user.LastName = dto.LastName;
+            }
+
+            var result = isNewUser 
+                ? await _userManager.CreateAsync(user, dto.Password ?? "Default123!") 
+                : await _userManager.UpdateAsync(user);
+            
+            if (!result.Succeeded)
+            {
+                var errors = string.Join(" / ", result.Errors.Select(e => e.Description));
+                return BadRequest(new { detail = errors });
+            }
+
+            if (isNewUser)
+            {
+                return CreatedAtAction(nameof(GetFederationReps), new { id = federation.Id },
+                    new { userId = user.Id, username = user.UserName });
+            }
+
+            return Ok(new { success = true, userId = user.Id, username = user.UserName });
+        }
+
+        // Update FederationRep account
+        [HttpPut("{id}/federation-reps/{userId}")]
+        public async Task<IActionResult> UpdateFederationRep(Guid id, Guid userId, UserUpdateDto dto)
+        {
+            var federation = await _db.Federations.FindAsync(id);
+            if (federation == null) return NotFound(new { detail = "فurasیون یافت نشد" });
+
+            var user = await _db.Users.FindAsync(userId);
+            if (user == null) return NotFound(new { detail = "کاربر یافت نشد" });
+
+            if (user.Role != UserRole.FederationRep)
+                return BadRequest(new { detail = "این کاربر دارای نقش نماینده فurasیون نیست" });
+
+            if (!CanManageFederationRepScope(federation))
+                return Forbid("شما اجازه ویرایش این نماینده فurasیون را ندارید");
+
+            // Validate scope matches federation
+            if (federation.Level == FederationLevel.Provincial)
+            {
+                user.ScopeLevel = ScopeLevel.Province;
+                user.ScopeProvinceId = federation.ProvinceId;
+                user.ScopeCityId = null;
+            }
+            else
+            {
+                user.ScopeLevel = ScopeLevel.City;
+                user.ScopeCityId = federation.CityId;
+                user.ScopeProvinceId = null;
+            }
+
+            user.FirstName = dto.FirstName;
+            user.LastName = dto.LastName;
+
+            var result = await _userManager.UpdateAsync(user);
+            if (!result.Succeeded)
+            {
+                var errors = string.Join(" / ", result.Errors.Select(e => e.Description));
+                return BadRequest(new { detail = errors });
+            }
+
+            return Ok(new { success = true });
+        }
+
+        // Deactivate FederationRep account (remove FederationRep role)
+        [HttpDelete("{id}/federation-reps/{userId}")]
+        public async Task<IActionResult> DeactivateFederationRep(Guid id, Guid userId)
+        {
+            var federation = await _db.Federations.FindAsync(id);
+            if (federation == null) return NotFound(new { detail = "فurasیون یافت نشد" });
+
+            var user = await _db.Users.FindAsync(userId);
+            if (user == null) return NotFound(new { detail = "کاربر یافت نشد" });
+
+            if (user.Role != UserRole.FederationRep)
+                return BadRequest(new { detail = "این کاربر دارای نقش نماینده فurasیون نیست" });
+
+            if (!CanManageFederationRepScope(federation))
+                return Forbid("شما اجازه غیرفعال‌سازی این نماینده فurasیون را ندارید");
+
+            // Deactivate the user account
+            await _userManager.SetLockoutEnabledAsync(user, true);
+            await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
+
+            return Ok(new { success = true });
+        }
+
+        // Check if current user can manage FederationRep accounts for this federation
+        private bool CanManageFederationRepScope(Federation federation)
+        {
+            var myRole = User.Role();
+            var myScopeLevel = User.ScopeLevel();
+
+            // Admin, Manager, SportsManager can manage FederationRep accounts
+            if (myRole is not ("Admin" or "Manager" or "SportsManager"))
+                return false;
+
+            // Scope validation based on federation level
+            if (federation.Level == FederationLevel.National)
+            {
+                // Only Mastery can manage national federation reps
+                return myScopeLevel == "Mastery";
+            }
+            
+            if (federation.Level == FederationLevel.Provincial)
+            {
+                if (myScopeLevel == "Mastery") return true;
+                if (myScopeLevel == "Province") return User.ScopeProvinceId() == federation.ProvinceId;
+                return false;
+            }
+            
+            if (federation.Level == FederationLevel.City)
+            {
+                if (myScopeLevel == "Mastery") return true;
+                if (myScopeLevel == "Province") return User.ScopeProvinceId() == federation.ProvinceId;
+                if (myScopeLevel == "City") return User.ScopeCityId() == federation.CityId;
+                return false;
+            }
+
+            return false;
         }
     }
 }
