@@ -48,6 +48,33 @@ public class AuthClaimsTests
     }
 
     [Fact]
+    public void GenerateAccessToken_WhenNamesAreMissing_UsesUsernameAsDisplayName()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:Key"] = "0123456789abcdef0123456789abcdef",
+                ["Jwt:Issuer"] = "test-issuer",
+                ["Jwt:Audience"] = "test-audience",
+                ["Jwt:AccessTokenExpiryMinutes"] = "30"
+            })
+            .Build();
+
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            UserName = "fallback-user",
+            Role = UserRole.Admin,
+            ScopeLevel = ScopeLevel.Mastery
+        };
+
+        var claims = new JwtSecurityTokenHandler().ReadJwtToken(new TokenService(config).GenerateAccessToken(user)).Claims
+            .ToDictionary(claim => claim.Type, claim => claim.Value);
+
+        Assert.Equal("fallback-user", claims[AuthClaimTypes.FullName]);
+    }
+
+    [Fact]
     public void ScopeIdClaims_WhenMalformed_AreNotAccepted()
     {
         var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]

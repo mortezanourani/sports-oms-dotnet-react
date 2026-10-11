@@ -23,6 +23,18 @@ namespace Backend.Controllers
             _fileStorage = fileStorage;
         }
 
+        private static string GetDisplayName(ApplicationUser user)
+        {
+            var parts = new string?[] { user.FirstName, user.LastName }
+                .Where(part => !string.IsNullOrWhiteSpace(part))
+                .Select(part => part!.Trim())
+                .ToArray();
+
+            return parts.Length > 0
+                ? string.Join(" ", parts)
+                : user.UserName ?? "کاربر";
+        }
+
         // Small helper to get the logged-in user's own ID out of the JWT
         // claims, used throughout this controller to filter to "my" messages.
         private Guid CurrentUserId =>
@@ -51,7 +63,7 @@ namespace Backend.Controllers
                 .Select(m => new MessageListOutDto(
                     m.Id, m.Subject,
                     m.Body.Length > 100 ? m.Body.Substring(0, 100) + "…" : m.Body,
-                    m.CreatedAt, m.SenderId, $"{m.Sender.FirstName} {m.Sender.LastName}" ?? m.Sender.UserName!,
+                    m.CreatedAt, m.SenderId, GetDisplayName(m.Sender),
                     m.Recipients.First(r => r.RecipientId == myId).IsRead,
                     m.Recipients.Count, m.Attachments.Count))
                 .ToListAsync();
@@ -80,7 +92,7 @@ namespace Backend.Controllers
                 .Select(m => new MessageListOutDto(
                     m.Id, m.Subject,
                     m.Body.Length > 100 ? m.Body.Substring(0, 100) + "…" : m.Body,
-                    m.CreatedAt, m.SenderId, $"{m.Sender.FirstName} {m.Sender.LastName}" ?? m.Sender.UserName!,
+                    m.CreatedAt, m.SenderId, GetDisplayName(m.Sender),
                     true, // IsRead is meaningless for a message you sent yourself — always true
                     m.Recipients.Count, m.Attachments.Count))
                 .ToListAsync();
@@ -126,9 +138,9 @@ namespace Backend.Controllers
 
             return Ok(new MessageDetailOutDto(
                 message.Id, message.Subject, message.Body, message.CreatedAt,
-                message.SenderId, $"{message.Sender.FirstName} {message.Sender.LastName}" ?? message.Sender.UserName!,
+                message.SenderId, GetDisplayName(message.Sender),
                 message.Recipients.Select(r => new MessageRecipientOutDto(
-                    r.RecipientId, $"{r.Recipient.FirstName} {r.Recipient.LastName}" ?? r.Recipient.UserName!, r.IsRead, r.ReadAt)).ToList(),
+                    r.RecipientId, GetDisplayName(r.Recipient), r.IsRead, r.ReadAt)).ToList(),
                 message.Attachments.Select(a => new MessageAttachmentOutDto(
                     a.Id, System.IO.Path.GetFileName(a.FilePath), a.UploadedAt)).ToList()));
         }
@@ -259,8 +271,9 @@ namespace Backend.Controllers
 
             var users = await _db.Users
                 .Where(u => u.Id != myId)
-                .OrderBy(u => $"{u.FirstName} {u.LastName}")
-                .Select(u => new RecipientOptionDto(u.Id, $"{u.FirstName} {u.LastName}" ?? u.UserName!, u.Role.ToString()))
+                .OrderBy(u => u.FirstName)
+                .ThenBy(u => u.LastName)
+                .Select(u => new RecipientOptionDto(u.Id, GetDisplayName(u), u.Role.ToString()))
                 .ToListAsync();
 
             return Ok(users);
