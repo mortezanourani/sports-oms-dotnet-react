@@ -1,4 +1,5 @@
 ﻿using Backend.Models;
+using Backend.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
@@ -32,11 +33,11 @@ namespace Backend.Services
             {
                 new(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new(ClaimTypes.Name, user.UserName ?? ""),
-                new("role", user.Role.ToString()),
-                new("full_name", $"{user.FirstName} {user.LastName}" ?? user.UserName ?? ""),
-                new("scope_level", user.ScopeLevel.ToString()),
-                new("scope_province_id", user.ScopeProvinceId?.ToString() ?? ""),
-                new("scope_city_id", user.ScopeCityId?.ToString() ?? ""),
+                new(AuthClaimTypes.Role, user.Role.ToString()),
+                new(AuthClaimTypes.FullName, $"{user.FirstName} {user.LastName}" ?? user.UserName ?? ""),
+                new(AuthClaimTypes.ScopeLevel, user.ScopeLevel.ToString()),
+                new(AuthClaimTypes.ScopeProvinceId, user.ScopeProvinceId?.ToString() ?? ""),
+                new(AuthClaimTypes.ScopeCityId, user.ScopeCityId?.ToString() ?? ""),
             };
 
             var token = new JwtSecurityToken(

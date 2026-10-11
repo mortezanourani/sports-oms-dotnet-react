@@ -46,6 +46,36 @@ public class FileStorageServiceTests
     }
 
     [Fact]
+    public async Task SaveAsync_WhenPrivateFile_SavesUnderPrivateRoot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"backend-storage-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var sut = new FileStorageService(
+                new TestWebHostEnvironment { ContentRootPath = root },
+                Options.Create(new FileStorageOptions
+                {
+                    RootPath = "uploads",
+                    AllowedDocumentExtensions = new[] { ".png" }
+                }));
+            using var stream = new MemoryStream(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+            var file = new FormFile(stream, 0, stream.Length, "file", "private.png");
+
+            var result = await sut.SaveAsync(file, "messages", isPublic: false, isImage: false);
+
+            Assert.True(result.Success);
+            Assert.StartsWith("private/messages/", result.RelativePath);
+            Assert.True(File.Exists(sut.GetFullPath(result.RelativePath!)));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task SaveAsync_WhenFileExceedsMaxSize_ReturnsFailure()
     {
         var root = Path.Combine(Path.GetTempPath(), $"backend-storage-{Guid.NewGuid():N}");
@@ -75,6 +105,50 @@ public class FileStorageServiceTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Theory]
+    [InlineData("../outside.txt")]
+    [InlineData("public/../private/file.png")]
+    [InlineData("public\\..\\private\\file.png")]
+    public void GetFullPath_WhenPathEscapesOrNormalizesSegments_Throws(string relativePath)
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"backend-storage-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var sut = new FileStorageService(
+                new TestWebHostEnvironment { ContentRootPath = root },
+                Options.Create(new FileStorageOptions { RootPath = "uploads" }));
+
+            Assert.Throws<ArgumentException>(() => sut.GetFullPath(relativePath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ResolveAbsolutePath_ProductionRequiresAbsoluteConfiguredRoot()
+    {
+        var options = new FileStorageOptions { RootPath = "Uploads" };
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            options.ResolveAbsolutePath(Path.GetTempPath(), requireConfiguredAbsolutePath: true));
+
+        Assert.Contains("absolute path", exception.Message);
+    }
+
+    [Fact]
+    public void ResolveAbsolutePath_DevelopmentAllowsDefaultRoot()
+    {
+        var contentRoot = Path.GetTempPath();
+        var options = new FileStorageOptions();
+
+        Assert.Equal(Path.Combine(contentRoot, "Uploads"), options.ResolveAbsolutePath(
+            contentRoot, requireConfiguredAbsolutePath: false));
     }
 
     private sealed class TestWebHostEnvironment : IWebHostEnvironment

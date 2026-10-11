@@ -57,8 +57,7 @@ Public-facing pages expose read-only statistics (facilities, champions, athlete 
 ### Backend setup
 
 ```bash
-cd backend
-dotnet restore
+dotnet restore Backend/Backend.csproj
 ```
 
 Create a local PostgreSQL database, or run one via Docker:
@@ -67,24 +66,29 @@ Create a local PostgreSQL database, or run one via Docker:
 docker run --name sportfed-postgres -e POSTGRES_PASSWORD=yourpassword -e POSTGRES_DB=sportfedoms -p 5432:5432 -d postgres:16
 ```
 
-Update the connection string in `appsettings.Development.json`:
+Configure local credentials outside source control. For example, in PowerShell:
 
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Database=sportfedoms;Username=postgres;Password=yourpassword"
-  }
-}
+```powershell
+$env:ConnectionStrings__DefaultConnection = "Host=localhost;Database=sportfedoms;Username=postgres;Password=<local-password>"
+$env:Jwt__Key = "<random-secret-of-at-least-32-bytes>"
+$env:SeedAdmin__Username = "<initial-admin-username>"
+$env:SeedAdmin__Password = "<strong-initial-admin-password>"
+dotnet run --project Backend/Backend.csproj
 ```
 
-Apply migrations and run:
+Apply migrations separately if needed:
 
 ```bash
-dotnet ef database update
-dotnet run
+dotnet ef database update --project Backend/Backend.csproj
 ```
 
-On first run, a seeded admin account is created automatically (see `appsettings.json` under `SeedAdmin` to set the initial username/password). The API's interactive Swagger docs are available at `/swagger` once running.
+The Development environment does not create an admin when bootstrap credentials are absent. In non-development environments, both `SeedAdmin:Username` and `SeedAdmin:Password` must be configured; startup fails with an explicit error if either is missing. The configured admin is created only if that username does not already exist. Keep credentials in a secret manager or deployment environment, never in `appsettings.json`. Interactive Swagger docs are available at `/swagger` in Development.
+
+### Production deployment configuration
+
+Set `ConnectionStrings__DefaultConnection`, `Jwt__Key` (at least 32 bytes), `Jwt__Issuer`, `Jwt__Audience`, `SeedAdmin__Username`, and `SeedAdmin__Password` through your deployment's secret/configuration mechanism. Configure `FileStorage__RootPath` to an **absolute mount path** for a shared, persistent, read/write volume available at the same path to every API replica; startup rejects missing or relative paths outside Development. The application creates `public` and `private` subdirectories there, so grant the application identity write access.
+
+Only files deliberately placed in `public` are served without authentication at `/files/public`. Keep private attachments in `private`; they are served only by the authenticated message-download endpoint. Do not put sensitive documents in the public directory. A local filesystem path or per-instance disk is not highly available and does not provide shared storage between replicas; the deployment must supply and back up the shared volume.
 
 ### Frontend setup
 
