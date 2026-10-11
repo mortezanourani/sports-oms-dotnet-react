@@ -37,11 +37,20 @@ namespace Backend.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login(LoginRequest request)
         {
-            var user = await _userManager.FindByNameAsync(request.Username);
+            if (request is null)
+                return BadRequest(new { detail = "درخواست نامعتبر است" });
+
+            var username = request.Username?.Trim();
+            var password = request.Password?.Trim();
+
+            if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+                return BadRequest(new { detail = "نام کاربری و رمز عبور الزامی هستند" });
+
+            var user = await _userManager.FindByNameAsync(username);
             if (user == null)
                 return Unauthorized(new { detail = "نام کاربری یا رمز عبور اشتباه است" });
 
-            var result = await _signInManager.CheckPasswordSignInAsync(user, request.Password, false);
+            var result = await _signInManager.CheckPasswordSignInAsync(user, password, false);
             if (!result.Succeeded)
                 return Unauthorized(new { detail = "نام کاربری یا رمز عبور اشتباه است" });
 
@@ -62,8 +71,8 @@ namespace Backend.Controllers
         [HttpPost("refresh")]
         public async Task<IActionResult> Refresh(RefreshRequest request)
         {
-            if (string.IsNullOrWhiteSpace(request.RefreshToken))
-                return Unauthorized(new { detail = "توکن نامعتبر است" });
+            if (request is null || string.IsNullOrWhiteSpace(request.RefreshToken))
+                return BadRequest(new { detail = "توکن نامعتبر است" });
 
             var now = DateTime.UtcNow;
             await using var transaction = await _db.Database.BeginTransactionAsync();

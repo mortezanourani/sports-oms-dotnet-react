@@ -13,6 +13,18 @@ namespace Backend.Services
         private readonly IConfiguration _config;
         public TokenService(IConfiguration config) => _config = config;
 
+        private static string BuildDisplayName(ApplicationUser user)
+        {
+            var parts = new string?[] { user.FirstName, user.LastName }
+                .Where(part => !string.IsNullOrWhiteSpace(part))
+                .Select(part => part!.Trim())
+                .ToArray();
+
+            return parts.Length > 0
+                ? string.Join(" ", parts)
+                : user.UserName ?? "کاربر";
+        }
+
         public string GenerateAccessToken(ApplicationUser user)
         {
             var jwtSettings = _config.GetSection("Jwt");
@@ -28,13 +40,14 @@ namespace Backend.Services
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            var displayName = BuildDisplayName(user);
 
             var claims = new List<Claim>
             {
                 new(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new(ClaimTypes.Name, user.UserName ?? ""),
                 new(AuthClaimTypes.Role, user.Role.ToString()),
-                new(AuthClaimTypes.FullName, $"{user.FirstName} {user.LastName}" ?? user.UserName ?? ""),
+                new(AuthClaimTypes.FullName, displayName),
                 new(AuthClaimTypes.ScopeLevel, user.ScopeLevel.ToString()),
                 new(AuthClaimTypes.ScopeProvinceId, user.ScopeProvinceId?.ToString() ?? ""),
                 new(AuthClaimTypes.ScopeCityId, user.ScopeCityId?.ToString() ?? ""),
