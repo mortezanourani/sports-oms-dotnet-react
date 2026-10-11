@@ -37,6 +37,11 @@ var refreshTokenExpirationDays = builder.Configuration.GetValue<int?>("Jwt:Refre
 if (refreshTokenExpirationDays is null or <= 0)
     throw new InvalidOperationException("Jwt:RefreshTokenExpirationDays must be a positive number.");
 
+var fileStorageOptions = builder.Configuration.GetSection("FileStorage").Get<FileStorageOptions>() ?? new FileStorageOptions();
+var uploadsRootPath = fileStorageOptions.ResolveAbsolutePath(
+    builder.Environment.ContentRootPath,
+    requireConfiguredAbsolutePath: !builder.Environment.IsDevelopment());
+
 // Add services to the container.
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString)
@@ -65,7 +70,7 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer = jwtIssuer,
         ValidAudience = jwtAudience,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-        RoleClaimType = "role"
+        RoleClaimType = AuthClaimTypes.Role
     };
 });
 
@@ -149,21 +154,26 @@ var app = builder.Build();
 app.UseMiddleware<Backend.Middleware.ExceptionHandlingMiddleware>();
 app.UseForwardedHeaders();
 
-using (var scope = app.Services.CreateScope())
+if (!app.Environment.IsDevelopment())
 {
-    var services = scope.ServiceProvider;
-    var context = services.GetRequiredService<ApplicationDbContext>();
-    await context.Database.MigrateAsync();
-    await DbSeeder.SeedAdminAsync(scope.ServiceProvider, app.Configuration);
+    app.UseHsts();
 }
 
-var fileStorageOptions = app.Configuration.GetSection("FileStorage").Get<FileStorageOptions>() ?? new FileStorageOptions();
-var uploadsRootPath = fileStorageOptions.ResolveAbsolutePath(app.Environment.ContentRootPath);
+app.UseHttpsRedirection();
+
 var publicUploadsPath = Path.Combine(uploadsRootPath, "public");
 Directory.CreateDirectory(publicUploadsPath);
 
 var privateUploadsPath = Path.Combine(uploadsRootPath, "private");
 Directory.CreateDirectory(privateUploadsPath);
+
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    var context = services.GetRequiredService<ApplicationDbContext>();
+    await context.Database.MigrateAsync();
+    await DbSeeder.SeedAdminAsync(scope.ServiceProvider, app.Configuration, app.Environment);
+}
 
 app.UseStaticFiles(new StaticFileOptions
 {
@@ -177,13 +187,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
-if (!app.Environment.IsDevelopment())
-{
-    app.UseHsts();
-}
-
-app.UseHttpsRedirection();
 
 app.UseRouting();
 
