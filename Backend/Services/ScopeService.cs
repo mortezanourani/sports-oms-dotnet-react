@@ -16,15 +16,20 @@ namespace Backend.Services
             if (scopeLevel == "City")
             {
                 var cityId = user.ScopeCityId();
-                return querySet.Where(f => f.CityId == cityId);
+                return cityId.HasValue
+                    ? querySet.Where(f => f.CityId == cityId.Value)
+                    : querySet.Where(_ => false);
             }
 
             if (scopeLevel == "Province")
             {
                 var provinceId = user.ScopeProvinceId();
-                return querySet.Where(f => f.City.ProvinceId == provinceId);
+                return provinceId.HasValue
+                    ? querySet.Where(f => f.City.ProvinceId == provinceId.Value)
+                    : querySet.Where(_ => false);
             }
-            return querySet;
+
+            return scopeLevel == "Mastery" ? querySet : querySet.Where(_ => false);
         }
 
         public IQueryable<Champion> FilterChampions(IQueryable<Champion> querySet, ClaimsPrincipal user)
@@ -33,14 +38,20 @@ namespace Backend.Services
             if (scopeLevel == "City")
             {
                 var cityId = user.ScopeCityId();
-                return querySet.Where(c => c.CityId == cityId);
+                return cityId.HasValue
+                    ? querySet.Where(c => c.CityId == cityId.Value)
+                    : querySet.Where(_ => false);
             }
             if (scopeLevel == "Province")
             {
                 var provinceId = user.ScopeProvinceId();
-                return querySet.Where(c => c.City != null && c.City.ProvinceId == provinceId);
+                return provinceId.HasValue
+                    ? querySet.Where(c => c.City != null && c.City.ProvinceId == provinceId.Value)
+                    : querySet.Where(_ => false);
             }
-            return querySet; // Mastery — no restriction, includes champions with no city set
+            return scopeLevel == "Mastery"
+                ? querySet // Mastery — no restriction, includes champions with no city set
+                : querySet.Where(_ => false);
         }
 
         public IQueryable<AthleteCount> FilterAthleteCounts(IQueryable<AthleteCount> querySet, ClaimsPrincipal user)
@@ -49,20 +60,29 @@ namespace Backend.Services
             if (scopeLevel == "City")
             {
                 var cityId = user.ScopeCityId();
-                return querySet.Where(a => a.CityId == cityId);
+                return cityId.HasValue
+                    ? querySet.Where(a => a.CityId == cityId.Value)
+                    : querySet.Where(_ => false);
             }
             if (scopeLevel == "Province")
             {
                 var provinceId = user.ScopeProvinceId();
-                return querySet.Where(a => a.City.ProvinceId == provinceId);
+                return provinceId.HasValue
+                    ? querySet.Where(a => a.City.ProvinceId == provinceId.Value)
+                    : querySet.Where(_ => false);
             }
-            return querySet; // Mastery
+            return scopeLevel == "Mastery" ? querySet : querySet.Where(_ => false);
         }
 
         public async Task CheckCityAllowedAsync(ClaimsPrincipal user, Guid cityId)
         {
             var scopeLevel = user.ScopeLevel();
             if (scopeLevel == "Mastery") return;
+
+            if (scopeLevel == "City" && !user.ScopeCityId().HasValue ||
+                scopeLevel == "Province" && !user.ScopeProvinceId().HasValue ||
+                scopeLevel is not ("City" or "Province"))
+                throw new UnauthorizedAccessException("The authenticated user's geographic scope is invalid.");
 
             var city = await _db.Cities.FindAsync(cityId)
                 ?? throw new KeyNotFoundException("City not found");

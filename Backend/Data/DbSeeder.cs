@@ -1,17 +1,32 @@
 ﻿using Backend.Models;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Hosting;
 
 namespace Backend.Data
 {
     public static class DbSeeder
     {
-        public static async Task SeedAdminAsync(IServiceProvider services, IConfiguration config)
+        public static async Task SeedAdminAsync(IServiceProvider services, IConfiguration config, IHostEnvironment environment)
         {
+            var adminUsername = config["SeedAdmin:Username"];
+            var adminPassword = config["SeedAdmin:Password"];
+            if (string.IsNullOrWhiteSpace(adminUsername) || string.IsNullOrWhiteSpace(adminPassword))
+            {
+                if (environment.IsDevelopment() &&
+                    string.IsNullOrWhiteSpace(adminUsername) &&
+                    string.IsNullOrWhiteSpace(adminPassword))
+                {
+                    services.GetRequiredService<ILoggerFactory>()
+                        .CreateLogger(nameof(DbSeeder))
+                        .LogWarning("Admin bootstrap skipped in Development because SeedAdmin credentials are not configured.");
+                    return;
+                }
+
+                throw new InvalidOperationException(
+                    "SeedAdmin:Username and SeedAdmin:Password must both be configured. Development skips seeding only when both are absent.");
+            }
+
             var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
-
-            var adminUsername = config["SeedAdmin:Username"] ?? "admin";
-            var adminPassword = config["SeedAdmin:Password"] ?? "ChangeMe123!";
-
             var existing = await userManager.FindByNameAsync(adminUsername);
             if (existing != null) return; // already seeded, do nothing
 

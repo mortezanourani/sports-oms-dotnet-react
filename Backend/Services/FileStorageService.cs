@@ -18,6 +18,18 @@ namespace Backend.Services
                 ? RootPath
                 : Path.GetFullPath(Path.Combine(contentRootPath, RootPath));
         }
+
+        public string ResolveAbsolutePath(string contentRootPath, bool requireConfiguredAbsolutePath)
+        {
+            if (MaxFileSizeBytes <= 0)
+                throw new InvalidOperationException("FileStorage:MaxFileSizeBytes must be a positive number.");
+
+            if (requireConfiguredAbsolutePath && (string.IsNullOrWhiteSpace(RootPath) || !Path.IsPathRooted(RootPath)))
+                throw new InvalidOperationException(
+                    "FileStorage:RootPath must be an absolute path outside Development. Configure it as the mount path of a shared persistent volume.");
+
+            return ResolveAbsolutePath(contentRootPath);
+        }
     }
     public class FileStorageService
     {
@@ -148,6 +160,13 @@ namespace Backend.Services
 
         private string ResolveUploadPath(string relativePath)
         {
+            if (string.IsNullOrWhiteSpace(relativePath) || Path.IsPathRooted(relativePath))
+                throw new ArgumentException("The file path must be a relative path inside the uploads directory.", nameof(relativePath));
+
+            var segments = relativePath.Split(new[] { '/', '\\' }, StringSplitOptions.None);
+            if (segments.Any(segment => string.IsNullOrWhiteSpace(segment) || segment is "." or ".."))
+                throw new ArgumentException("The file path contains an invalid path segment.", nameof(relativePath));
+
             var uploadsRoot = Path.GetFullPath(_options.ResolveAbsolutePath(_env.ContentRootPath));
             var fullPath = Path.GetFullPath(Path.Combine(uploadsRoot, relativePath));
             var rootPrefix = uploadsRoot.EndsWith(Path.DirectorySeparatorChar)
