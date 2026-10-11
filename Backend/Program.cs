@@ -3,6 +3,7 @@ using Backend.Extensions;
 using Backend.Models;
 using Backend.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
@@ -110,21 +111,43 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+var configureCors = allowedOrigins.Length > 0 || builder.Environment.IsDevelopment();
 
-builder.Services.AddCors(options =>
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.AddPolicy("FrontendPolicy", policy =>
-    {
-        policy.WithOrigins(allowedOrigins)
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .AllowCredentials();
-    });
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
 });
+
+if (configureCors)
+{
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("FrontendPolicy", policy =>
+        {
+            if (allowedOrigins.Length > 0)
+            {
+                policy.WithOrigins(allowedOrigins);
+            }
+            else
+            {
+                policy.SetIsOriginAllowed(origin =>
+                    Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
+                    (uri.Host == "localhost" || uri.Host.EndsWith(".localhost")));
+            }
+
+            policy.AllowAnyMethod()
+                .AllowAnyHeader()
+                .AllowCredentials();
+        });
+    });
+}
 
 var app = builder.Build();
 
 app.UseMiddleware<Backend.Middleware.ExceptionHandlingMiddleware>();
+app.UseForwardedHeaders();
 
 using (var scope = app.Services.CreateScope())
 {
@@ -134,14 +157,12 @@ using (var scope = app.Services.CreateScope())
     await DbSeeder.SeedAdminAsync(scope.ServiceProvider, app.Configuration);
 }
 
-// Ensure the public uploads folder exists before static file middleware
-// starts — PhysicalFileProvider requires the directory to already be
-// present at startup, unlike FileStorageService's own CreateDirectory
-// call, which only runs later, on first upload.
-var publicUploadsPath = Path.Combine(app.Environment.ContentRootPath, "Uploads", "public");
+var fileStorageOptions = app.Configuration.GetSection("FileStorage").Get<FileStorageOptions>() ?? new FileStorageOptions();
+var uploadsRootPath = fileStorageOptions.ResolveAbsolutePath(app.Environment.ContentRootPath);
+var publicUploadsPath = Path.Combine(uploadsRootPath, "public");
 Directory.CreateDirectory(publicUploadsPath);
 
-var privateUploadsPath = Path.Combine(app.Environment.ContentRootPath, "Uploads", "private");
+var privateUploadsPath = Path.Combine(uploadsRootPath, "private");
 Directory.CreateDirectory(privateUploadsPath);
 
 app.UseStaticFiles(new StaticFileOptions
@@ -157,11 +178,19 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
+
 app.UseHttpsRedirection();
 
 app.UseRouting();
 
-app.UseCors("FrontendPolicy");
+if (configureCors)
+{
+    app.UseCors("FrontendPolicy");
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
