@@ -4,6 +4,8 @@ const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL,
 });
 
+let refreshPromise = null;
+
 api.interceptors.request.use((config) => {
     const token = localStorage.getItem('access_token');
     if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -19,9 +21,21 @@ api.interceptors.response.use(
             const refresh = localStorage.getItem('refresh_token');
             if (refresh) {
                 try {
-                    const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/auth/refresh`, {
-                        refreshToken: refresh,
-                    });
+                    if (!refreshPromise) {
+                        refreshPromise = axios.post(`${import.meta.env.VITE_API_URL}/auth/refresh`, {
+                            refreshToken: refresh,
+                        }).then(({ data }) => {
+                            if (!data.access || !data.refresh) {
+                                throw new Error('The refresh response did not include replacement tokens.');
+                            }
+                            localStorage.setItem('access_token', data.access);
+                            localStorage.setItem('refresh_token', data.refresh);
+                            return data;
+                        }).finally(() => {
+                            refreshPromise = null;
+                        });
+                    }
+                    const { data } = await refreshPromise;
                     localStorage.setItem('access_token', data.access);
                     original.headers.Authorization = `Bearer ${data.access}`;
                     return api(original);

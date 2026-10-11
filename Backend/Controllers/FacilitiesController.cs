@@ -5,11 +5,7 @@ using Backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Backend.Data;
-using Backend.DTOs;
 using Backend.Extensions;
-using Backend.Models;
-using Backend.Services;
 
 namespace Backend.Controllers
 {
@@ -57,6 +53,19 @@ namespace Backend.Controllers
             return false;
         }
 
+        private bool IsWithinCurrentScope(Facility facility)
+        {
+            var scopeLevel = User.ScopeLevel();
+
+            if (scopeLevel == "Mastery") return true;
+            if (scopeLevel == "Province")
+                return facility.City.ProvinceId == User.ScopeProvinceId();
+            if (scopeLevel == "City")
+                return facility.CityId == User.ScopeCityId();
+
+            return false;
+        }
+
         private bool HasFacilityPermission()
         {
             var role = User.Role();
@@ -67,57 +76,12 @@ namespace Backend.Controllers
         private bool CanAccessFacility(Facility facility)
         {
             var role = User.Role();
-            var myScopeLevel = User.ScopeLevel();
 
-            if (role == "Admin" || role == "Manager")
-            {
-                // Full access based on scope
-                if (myScopeLevel == "Mastery") return true;
-                if (myScopeLevel == "Province")
-                {
-                    var myProvinceId = User.ScopeProvinceId();
-                    return facility.City.ProvinceId == myProvinceId;
-                }
-                if (myScopeLevel == "City")
-                {
-                    var myCityId = User.ScopeCityId();
-                    return facility.CityId == myCityId;
-                }
-            }
+            if (role is "Admin" or "Manager" or "M5Manager" or "M5Officer")
+                return IsWithinCurrentScope(facility);
 
-            if (role == "M88Manager" || role == "M88Officer")
-            {
-                // Only MSY facilities, based on scope
-                if (facility.FacilityType != FacilityType.Msy) return false;
-
-                if (myScopeLevel == "Mastery") return true;
-                if (myScopeLevel == "Province")
-                {
-                    var myProvinceId = User.ScopeProvinceId();
-                    return facility.City.ProvinceId == myProvinceId;
-                }
-                if (myScopeLevel == "City")
-                {
-                    var myCityId = User.ScopeCityId();
-                    return facility.CityId == myCityId;
-                }
-            }
-
-            if (role == "M5Manager" || role == "M5Officer")
-            {
-                // All types for list/get, but based on scope
-                if (myScopeLevel == "Mastery") return true;
-                if (myScopeLevel == "Province")
-                {
-                    var myProvinceId = User.ScopeProvinceId();
-                    return facility.City.ProvinceId == myProvinceId;
-                }
-                if (myScopeLevel == "City")
-                {
-                    var myCityId = User.ScopeCityId();
-                    return facility.CityId == myCityId;
-                }
-            }
+            if (role is "M88Manager" or "M88Officer")
+                return facility.FacilityType == FacilityType.Msy && IsWithinCurrentScope(facility);
 
             return false;
         }
@@ -151,26 +115,11 @@ namespace Backend.Controllers
         {
             var role = User.Role();
 
-            // Admin/Manager have full access with scope limitations
-            if (role == "Admin" || role == "Manager")
-            {
-                var myScopeLevel = User.ScopeLevel();
-                if (myScopeLevel == "Mastery") return true;
-                if (myScopeLevel == "Province")
-                {
-                    return facility.City.ProvinceId == User.ScopeProvinceId();
-                }
-                if (myScopeLevel == "City")
-                {
-                    return facility.CityId == User.ScopeCityId();
-                }
-            }
+            if (role is "Admin" or "Manager")
+                return CanAccessFacility(facility);
 
-            // M88 users need MSY facilities for contracts
             if (role == "M88Manager" || role == "M88Officer")
-            {
-                return facility.FacilityType == FacilityType.Msy && CanAccessFacility(facility);
-            }
+                return CanAccessFacility(facility);
 
             return false;
         }
@@ -180,26 +129,12 @@ namespace Backend.Controllers
         {
             var role = User.Role();
 
-            // Admin/Manager have full access with scope limitations
-            if (role == "Admin" || role == "Manager")
-            {
-                var myScopeLevel = User.ScopeLevel();
-                if (myScopeLevel == "Mastery") return true;
-                if (myScopeLevel == "Province")
-                {
-                    return facility.City.ProvinceId == User.ScopeProvinceId();
-                }
-                if (myScopeLevel == "City")
-                {
-                    return facility.CityId == User.ScopeCityId();
-                }
-            }
+            if (role is "Admin" or "Manager")
+                return CanAccessFacility(facility);
 
-            // M5 users need Private/Gov facilities for licenses
             if (role == "M5Manager" || role == "M5Officer")
-            {
-                return (facility.FacilityType is FacilityType.Private or FacilityType.Gov) && CanAccessFacility(facility);
-            }
+                return (facility.FacilityType is FacilityType.Private or FacilityType.Gov) &&
+                       CanAccessFacility(facility);
 
             return false;
         }
