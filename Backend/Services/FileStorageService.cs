@@ -5,8 +5,19 @@ namespace Backend.Services
     public class FileStorageOptions
     {
         public long MaxFileSizeBytes { get; set; } = 10 * 1024 * 1024; // 10 MB default
+        public string RootPath { get; set; } = string.Empty;
         public string[] AllowedImageExtensions { get; set; } = { ".jpg", ".jpeg", ".png", ".webp" };
-        public string[] AllowedDocumentExtensions { get; set; } = { ".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx" };
+        public string[] AllowedDocumentExtensions { get; set; } = { ".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx", ".xlsx" };
+
+        public string ResolveAbsolutePath(string contentRootPath)
+        {
+            if (string.IsNullOrWhiteSpace(RootPath))
+                return Path.Combine(contentRootPath, "Uploads");
+
+            return Path.IsPathRooted(RootPath)
+                ? RootPath
+                : Path.GetFullPath(Path.Combine(contentRootPath, RootPath));
+        }
     }
     public class FileStorageService
     {
@@ -137,7 +148,7 @@ namespace Backend.Services
 
         private string ResolveUploadPath(string relativePath)
         {
-            var uploadsRoot = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "Uploads"));
+            var uploadsRoot = Path.GetFullPath(_options.ResolveAbsolutePath(_env.ContentRootPath));
             var fullPath = Path.GetFullPath(Path.Combine(uploadsRoot, relativePath));
             var rootPrefix = uploadsRoot.EndsWith(Path.DirectorySeparatorChar)
                 ? uploadsRoot
