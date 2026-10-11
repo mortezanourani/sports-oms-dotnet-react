@@ -137,25 +137,8 @@ namespace Backend.Controllers
 
             if (a == null) return NotFound(new { detail = "رکورد یافت نشد" });
 
-            // Scope validation for SportsManager/SportsOfficer
-            if (IsSportsManager() || IsSportsOfficer())
-            {
-                var myScope = User.ScopeLevel();
-                if (myScope == "Mastery")
-                {
-                    // Can read all
-                }
-                else if (myScope == "Province")
-                {
-                    if (a.City.ProvinceId != User.ScopeProvinceId())
-                        return Forbid("شما اجازه مشاهده این رکورد را ندارید");
-                }
-                else if (myScope == "City")
-                {
-                    if (a.CityId != User.ScopeCityId())
-                        return Forbid("شما اجازه مشاهده این رکورد را ندارید");
-                }
-            }
+            if (!IsInAllowedScope("City", a.City.ProvinceId, a.CityId))
+                return Forbid("شما اجازه مشاهده این رکورد را ندارید");
 
             return Ok(new AthleteCountOutDto(
                 a.Id, a.FederationId, a.Federation.Name!,
