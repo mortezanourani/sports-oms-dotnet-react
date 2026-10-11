@@ -123,7 +123,7 @@ namespace Backend.Controllers
         }
 
         // Check if user can write to facility based on type (for create/update)
-        private bool CanWriteFacilityType(Facility facility)
+        private bool CanWriteFacilityType(FacilityType facilityType)
         {
             var role = User.Role();
 
@@ -134,13 +134,13 @@ namespace Backend.Controllers
 
             if (role == "M88Manager" || role == "M88Officer")
             {
-                return facility.FacilityType == FacilityType.Msy;
+                return facilityType == FacilityType.Msy;
             }
 
             if (role == "M5Manager" || role == "M5Officer")
             {
                 // Can only write Private and Gov facilities
-                return facility.FacilityType is FacilityType.Private or FacilityType.Gov;
+                return facilityType is FacilityType.Private or FacilityType.Gov;
             }
 
             return false;
@@ -307,20 +307,22 @@ namespace Backend.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(Guid id, FacilityUpdateDto dto)
         {
-            var facility = await _db.Facilities.FindAsync(id);
+            var facility = await _db.Facilities
+                .Include(f => f.City)
+                .FirstOrDefaultAsync(f => f.Id == id);
             if (facility == null) return NotFound();
 
             if (!CanAccessFacility(facility))
                 return Forbid("شما اجازه ویرایش این مکان را ندارید");
 
-            if (!CanWriteFacilityType(facility))
+            if (!Enum.TryParse<FacilityType>(dto.FacilityType, out var facilityTypeEnum))
+                return BadRequest(new { detail = "نوع مکان نامعتبر است" });
+
+            if (!CanWriteFacilityType(facilityTypeEnum))
                 return Forbid("شما اجازه ویرایش این نوع مکان را ندارید");
 
             try { await _scope.CheckCityAllowedAsync(User, dto.CityId); }
             catch (UnauthorizedAccessException ex) { return Forbid(ex.Message); }
-
-            if (!Enum.TryParse<FacilityType>(dto.FacilityType, out var facilityTypeEnum))
-                return BadRequest(new { detail = "نوع مکان نامعتبر است" });
 
             facility.FacilityType = facilityTypeEnum;
             facility.Name = dto.Name;
@@ -338,7 +340,9 @@ namespace Backend.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(Guid id)
         {
-            var facility = await _db.Facilities.FindAsync(id);
+            var facility = await _db.Facilities
+                .Include(f => f.City)
+                .FirstOrDefaultAsync(f => f.Id == id);
             if (facility == null) return NotFound();
 
             if (!CanAccessFacility(facility))
@@ -413,9 +417,11 @@ namespace Backend.Controllers
         }
 
         [HttpPost("{facilityId}/contracts")]
-        public async Task<IActionResult> CreateContract(Guid facilityId, [FromBody] dynamic dto)
+        public async Task<IActionResult> CreateContract(Guid facilityId, FacilityContractDto dto)
         {
-            var facility = await _db.Facilities.FindAsync(facilityId);
+            var facility = await _db.Facilities
+                .Include(f => f.City)
+                .FirstOrDefaultAsync(f => f.Id == facilityId);
             if (facility == null) return NotFound();
 
             if (!CanAccessFacilityContractsLicenses(facility))
@@ -425,13 +431,16 @@ namespace Backend.Controllers
             if (User.Role() == "M88Officer" && facility.FacilityType != FacilityType.Msy)
                 return Forbid("شما فقط مجاز به ایجاد قرارداد برای اماکن MSY هستید");
 
+            if (!dto.StartDate.HasValue)
+                return BadRequest(new { detail = "تاریخ شروع قرارداد الزامی است" });
+
             var contract = new FacilityContract
             {
                 FacilityId = facilityId,
                 ThirdPartyName = dto.ThirdPartyName ?? string.Empty,
                 ThirdPartyContact = dto.ThirdPartyContact,
-                StartDate = DateOnly.FromDateTime(dto.StartDate),
-                EndDate = dto.EndDate != null ? DateOnly.FromDateTime(dto.EndDate) : null,
+                StartDate = DateOnly.FromDateTime(dto.StartDate.Value),
+                EndDate = dto.EndDate.HasValue ? DateOnly.FromDateTime(dto.EndDate.Value) : null,
                 ContractFilePath = dto.ContractFilePath,
                 CreatedAt = DateTime.UtcNow
             };
@@ -443,9 +452,11 @@ namespace Backend.Controllers
         }
 
         [HttpPut("{facilityId}/contracts/{contractId}")]
-        public async Task<IActionResult> UpdateContract(Guid facilityId, Guid contractId, [FromBody] dynamic dto)
+        public async Task<IActionResult> UpdateContract(Guid facilityId, Guid contractId, FacilityContractDto dto)
         {
-            var facility = await _db.Facilities.FindAsync(facilityId);
+            var facility = await _db.Facilities
+                .Include(f => f.City)
+                .FirstOrDefaultAsync(f => f.Id == facilityId);
             if (facility == null) return NotFound();
 
             if (!CanAccessFacilityContractsLicenses(facility))
@@ -460,10 +471,13 @@ namespace Backend.Controllers
             if (User.Role() == "M88Officer" && facility.FacilityType != FacilityType.Msy)
                 return Forbid("شما فقط مجاز به ویرایش قرارداد برای اماکن MSY هستید");
 
+            if (!dto.StartDate.HasValue)
+                return BadRequest(new { detail = "تاریخ شروع قرارداد الزامی است" });
+
             contract.ThirdPartyName = dto.ThirdPartyName ?? string.Empty;
             contract.ThirdPartyContact = dto.ThirdPartyContact;
-            contract.StartDate = DateOnly.FromDateTime(dto.StartDate);
-            contract.EndDate = dto.EndDate != null ? DateOnly.FromDateTime(dto.EndDate) : null;
+            contract.StartDate = DateOnly.FromDateTime(dto.StartDate.Value);
+            contract.EndDate = dto.EndDate.HasValue ? DateOnly.FromDateTime(dto.EndDate.Value) : null;
             contract.ContractFilePath = dto.ContractFilePath;
 
             await _db.SaveChangesAsync();
@@ -473,7 +487,9 @@ namespace Backend.Controllers
         [HttpDelete("{facilityId}/contracts/{contractId}")]
         public async Task<IActionResult> DeleteContract(Guid facilityId, Guid contractId)
         {
-            var facility = await _db.Facilities.FindAsync(facilityId);
+            var facility = await _db.Facilities
+                .Include(f => f.City)
+                .FirstOrDefaultAsync(f => f.Id == facilityId);
             if (facility == null) return NotFound();
 
             if (!CanAccessFacilityContractsLicenses(facility))
@@ -557,9 +573,11 @@ namespace Backend.Controllers
         }
 
         [HttpPost("{facilityId}/licenses")]
-        public async Task<IActionResult> CreateLicense(Guid facilityId, [FromBody] dynamic dto)
+        public async Task<IActionResult> CreateLicense(Guid facilityId, FacilityLicenseDto dto)
         {
-            var facility = await _db.Facilities.FindAsync(facilityId);
+            var facility = await _db.Facilities
+                .Include(f => f.City)
+                .FirstOrDefaultAsync(f => f.Id == facilityId);
             if (facility == null) return NotFound();
 
             if (!CanAccessFacilityLicenses(facility))
@@ -569,13 +587,16 @@ namespace Backend.Controllers
             if (User.Role() == "M5Officer" && facility.FacilityType is not (FacilityType.Private or FacilityType.Gov))
                 return Forbid("شما فقط مجاز به ایجاد لایسنس برای اماکن خصوصی/دولتی هستید");
 
+            if (!dto.IssueDate.HasValue)
+                return BadRequest(new { detail = "تاریخ صدور لایسنس الزامی است" });
+
             var license = new FacilityLicense
             {
                 FacilityId = facilityId,
                 LicenseNumber = dto.LicenseNumber ?? string.Empty,
                 HolderName = dto.HolderName ?? string.Empty,
-                IssueDate = DateOnly.FromDateTime(dto.IssueDate),
-                ExpiryDate = dto.ExpiryDate != null ? DateOnly.FromDateTime(dto.ExpiryDate) : null,
+                IssueDate = DateOnly.FromDateTime(dto.IssueDate.Value),
+                ExpiryDate = dto.ExpiryDate.HasValue ? DateOnly.FromDateTime(dto.ExpiryDate.Value) : null,
                 LicenseFilePath = dto.LicenseFilePath,
                 CreatedAt = DateTime.UtcNow
             };
@@ -587,9 +608,11 @@ namespace Backend.Controllers
         }
 
         [HttpPut("{facilityId}/licenses/{licenseId}")]
-        public async Task<IActionResult> UpdateLicense(Guid facilityId, Guid licenseId, [FromBody] dynamic dto)
+        public async Task<IActionResult> UpdateLicense(Guid facilityId, Guid licenseId, FacilityLicenseDto dto)
         {
-            var facility = await _db.Facilities.FindAsync(facilityId);
+            var facility = await _db.Facilities
+                .Include(f => f.City)
+                .FirstOrDefaultAsync(f => f.Id == facilityId);
             if (facility == null) return NotFound();
 
             if (!CanAccessFacilityLicenses(facility))
@@ -604,10 +627,13 @@ namespace Backend.Controllers
             if (User.Role() == "M5Officer" && facility.FacilityType is not (FacilityType.Private or FacilityType.Gov))
                 return Forbid("شما فقط مجاز به ویرایش لایسنس برای اماکن خصوصی/دولتی هستید");
 
+            if (!dto.IssueDate.HasValue)
+                return BadRequest(new { detail = "تاریخ صدور لایسنس الزامی است" });
+
             license.LicenseNumber = dto.LicenseNumber ?? string.Empty;
             license.HolderName = dto.HolderName ?? string.Empty;
-            license.IssueDate = DateOnly.FromDateTime(dto.IssueDate);
-            license.ExpiryDate = dto.ExpiryDate != null ? DateOnly.FromDateTime(dto.ExpiryDate) : null;
+            license.IssueDate = DateOnly.FromDateTime(dto.IssueDate.Value);
+            license.ExpiryDate = dto.ExpiryDate.HasValue ? DateOnly.FromDateTime(dto.ExpiryDate.Value) : null;
             license.LicenseFilePath = dto.LicenseFilePath;
 
             await _db.SaveChangesAsync();
@@ -617,7 +643,9 @@ namespace Backend.Controllers
         [HttpDelete("{facilityId}/licenses/{licenseId}")]
         public async Task<IActionResult> DeleteLicense(Guid facilityId, Guid licenseId)
         {
-            var facility = await _db.Facilities.FindAsync(facilityId);
+            var facility = await _db.Facilities
+                .Include(f => f.City)
+                .FirstOrDefaultAsync(f => f.Id == facilityId);
             if (facility == null) return NotFound();
 
             if (!CanAccessFacilityLicenses(facility))

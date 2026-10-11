@@ -155,6 +155,9 @@ namespace Backend.Controllers
         [HttpPost]
         public async Task<IActionResult> Create(ChampionCreateDto dto)
         {
+            if (!HasChampionPermission())
+                return Forbid("شما اجازه ایجاد قهرمان را ندارید");
+
             if (!Enum.TryParse<Gender>(dto.Gender, out var genderEnum))
                 return BadRequest(new { detail = "جنسیت نامعتبر است" });
 
@@ -195,7 +198,10 @@ namespace Backend.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(Guid id, ChampionUpdateDto dto)
         {
-            var champion = await _db.Champions.FindAsync(id);
+            var champion = await _db.Champions
+                .Include(c => c.Federation)
+                .Include(c => c.City)
+                .FirstOrDefaultAsync(c => c.Id == id);
             if (champion == null)
                 return NotFound(new { detail = "قهرمان یافت نشد" });
 
@@ -238,7 +244,10 @@ namespace Backend.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(Guid id)
         {
-            var champion = await _db.Champions.FindAsync(id);
+            var champion = await _db.Champions
+                .Include(c => c.Federation)
+                .Include(c => c.City)
+                .FirstOrDefaultAsync(c => c.Id == id);
             if (champion == null)
                 return NotFound(new { detail = "قهرمان یافت نشد" });
 
@@ -257,7 +266,10 @@ namespace Backend.Controllers
         [HttpPost("{championId}/medals")]
         public async Task<IActionResult> AddMedal(Guid championId, MedalCreateDto dto)
         {
-            var champion = await _db.Champions.FindAsync(championId);
+            var champion = await _db.Champions
+                .Include(c => c.Federation)
+                .Include(c => c.City)
+                .FirstOrDefaultAsync(c => c.Id == championId);
             if (champion == null)
                 return NotFound(new { detail = "قهرمان یافت نشد" });
 
@@ -300,7 +312,10 @@ namespace Backend.Controllers
                 return NotFound(new { detail = "مدال یافت نشد" });
 
             // Get champion to check access
-            var champion = await _db.Champions.FindAsync(championId);
+            var champion = await _db.Champions
+                .Include(c => c.Federation)
+                .Include(c => c.City)
+                .FirstOrDefaultAsync(c => c.Id == championId);
             if (champion == null || !CanAccessChampion(champion))
                 return Forbid("شما اجازه حذف این مدال را ندارید");
 

@@ -171,6 +171,9 @@ namespace Backend.Controllers
             if (IsCityScope())
                 return Forbid("شما اجازه ایجاد شهر ندارید");
 
+            if (IsProvinceScope() && dto.ProvinceId != User.ScopeProvinceId())
+                return Forbid("شما اجازه ایجاد شهر در این استان را ندارید");
+
             var exists = await _db.Cities
                 .AnyAsync(c => c.ProvinceId == dto.ProvinceId && c.Name == dto.Name);
             if (exists)
