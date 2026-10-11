@@ -1,4 +1,6 @@
-﻿namespace Backend.Services
+﻿using System.IO.Compression;
+
+namespace Backend.Services
 {
     public class FileStorageOptions
     {
@@ -38,6 +40,9 @@
             if (!allowedExtensions.Contains(extension))
                 return (false, null, $"نوع فایل مجاز نیست. فرمت‌های مجاز: {string.Join(", ", allowedExtensions)}");
 
+            if (!await HasValidContentAsync(file, extension))
+                return (false, null, "محتوای فایل با پسوند آن مطابقت ندارد");
+
             // The uploaded file's ORIGINAL name is never used as the stored
             // filename. Two reasons: (1) it can contain characters or path
             // segments (e.g. "../../something") that could be used for a
@@ -53,13 +58,12 @@
             var storedFileName = $"{Guid.NewGuid()}{extension}";
 
             var rootFolder = isPublic ? "public" : "private";
-            var uploadsRoot = Path.Combine(_env.ContentRootPath, "Uploads", rootFolder, subfolder);
+            var relativePath = Path.Combine(rootFolder, subfolder, storedFileName);
+            var fullPath = ResolveUploadPath(relativePath);
 
-            Directory.CreateDirectory(uploadsRoot); // no-op if it already exists
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
 
-            var fullPath = Path.Combine(uploadsRoot, storedFileName);
-
-            using (var stream = new FileStream(fullPath, FileMode.Create))
+            using (var stream = new FileStream(fullPath, FileMode.CreateNew))
             {
                 await file.CopyToAsync(stream);
             }
@@ -69,18 +73,83 @@
             // (the download controller, a migration script, etc.) knows
             // unambiguously which physical folder to look in without having
             // to separately track "was this public or private" elsewhere.
-            var relativePath = Path.Combine(rootFolder, subfolder, storedFileName).Replace("\\", "/");
-            return (true, relativePath, null);
+            return (true, relativePath.Replace("\\", "/"), null);
         }
 
         public void Delete(string relativePath)
         {
-            var fullPath = Path.Combine(_env.ContentRootPath, "Uploads", relativePath);
+            var fullPath = ResolveUploadPath(relativePath);
             if (File.Exists(fullPath))
                 File.Delete(fullPath);
         }
 
         public string GetFullPath(string relativePath) =>
-            Path.Combine(_env.ContentRootPath, "Uploads", relativePath);
+            ResolveUploadPath(relativePath);
+
+        private static async Task<bool> HasValidContentAsync(IFormFile file, string extension)
+        {
+            await using var stream = file.OpenReadStream();
+            var header = new byte[12];
+            var totalRead = 0;
+            while (totalRead < header.Length)
+            {
+                var read = await stream.ReadAsync(header.AsMemory(totalRead));
+                if (read == 0) break;
+                totalRead += read;
+            }
+
+            return extension switch
+            {
+                ".jpg" or ".jpeg" => totalRead >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF,
+                ".png" => totalRead >= 8 && header.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }),
+                ".webp" => totalRead >= 12 &&
+                           header.AsSpan(0, 4).SequenceEqual("RIFF"u8) &&
+                           header.AsSpan(8, 4).SequenceEqual("WEBP"u8),
+                ".pdf" => totalRead >= 5 && header.AsSpan(0, 5).SequenceEqual("%PDF-"u8),
+                ".doc" => totalRead >= 8 &&
+                          header.AsSpan(0, 8).SequenceEqual(new byte[] { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 }),
+                ".docx" => await IsOpenXmlDocumentAsync(stream, "word/document.xml"),
+                ".xlsx" => await IsOpenXmlDocumentAsync(stream, "xl/workbook.xml"),
+                _ => false
+            };
+        }
+
+        private static async Task<bool> IsOpenXmlDocumentAsync(Stream stream, string expectedEntry)
+        {
+            if (!stream.CanSeek) return false;
+
+            stream.Position = 0;
+            try
+            {
+                using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
+                return archive.GetEntry("[Content_Types].xml") != null &&
+                       archive.GetEntry(expectedEntry) != null;
+            }
+            catch (InvalidDataException)
+            {
+                return false;
+            }
+            finally
+            {
+                stream.Position = 0;
+            }
+        }
+
+        private string ResolveUploadPath(string relativePath)
+        {
+            var uploadsRoot = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "Uploads"));
+            var fullPath = Path.GetFullPath(Path.Combine(uploadsRoot, relativePath));
+            var rootPrefix = uploadsRoot.EndsWith(Path.DirectorySeparatorChar)
+                ? uploadsRoot
+                : uploadsRoot + Path.DirectorySeparatorChar;
+            var comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
+            if (!fullPath.StartsWith(rootPrefix, comparison))
+                throw new ArgumentException("The file path must be inside the uploads directory.", nameof(relativePath));
+
+            return fullPath;
+        }
     }
 }

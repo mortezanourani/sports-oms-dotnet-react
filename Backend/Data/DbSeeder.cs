@@ -1,6 +1,5 @@
 ﻿using Backend.Models;
 using Microsoft.AspNetCore.Identity;
-using Backend.Models;
 
 namespace Backend.Data
 {

@@ -1,6 +1,6 @@
 ﻿using Backend.Models;
 using Microsoft.IdentityModel.Tokens;
-using Backend.Models;
+using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -15,7 +15,17 @@ namespace Backend.Services
         public string GenerateAccessToken(ApplicationUser user)
         {
             var jwtSettings = _config.GetSection("Jwt");
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]!));
+            var jwtKey = jwtSettings["Key"]
+                ?? throw new InvalidOperationException("Jwt:Key must be configured.");
+            var jwtIssuer = jwtSettings["Issuer"]
+                ?? throw new InvalidOperationException("Jwt:Issuer must be configured.");
+            var jwtAudience = jwtSettings["Audience"]
+                ?? throw new InvalidOperationException("Jwt:Audience must be configured.");
+            if (!double.TryParse(jwtSettings["AccessTokenExpiryMinutes"], NumberStyles.Float,
+                    CultureInfo.InvariantCulture, out var expiryMinutes) || expiryMinutes <= 0)
+                throw new InvalidOperationException("Jwt:AccessTokenExpiryMinutes must be a positive number.");
+
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var claims = new List<Claim>
@@ -30,10 +40,10 @@ namespace Backend.Services
             };
 
             var token = new JwtSecurityToken(
-                issuer: jwtSettings["Issuer"],
-                audience: jwtSettings["Audience"],
+                issuer: jwtIssuer,
+                audience: jwtAudience,
                 claims: claims,
-                expires: DateTime.UtcNow.AddMinutes(double.Parse(jwtSettings["AccessTokenExpiryMinutes"]!)),
+                expires: DateTime.UtcNow.AddMinutes(expiryMinutes),
                 signingCredentials: creds
             );
 

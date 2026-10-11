@@ -7,16 +7,38 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
-using System.Security.Claims;
 using System.Text;
 
 
 var builder = WebApplication.CreateBuilder(args);
 
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+    throw new InvalidOperationException("ConnectionStrings:DefaultConnection must be configured.");
+
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey) || Encoding.UTF8.GetByteCount(jwtKey) < 32)
+    throw new InvalidOperationException("Jwt:Key must be configured with at least 32 bytes.");
+
+var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+if (string.IsNullOrWhiteSpace(jwtIssuer))
+    throw new InvalidOperationException("Jwt:Issuer must be configured.");
+
+var jwtAudience = builder.Configuration["Jwt:Audience"];
+if (string.IsNullOrWhiteSpace(jwtAudience))
+    throw new InvalidOperationException("Jwt:Audience must be configured.");
+
+var accessTokenExpiryMinutes = builder.Configuration.GetValue<double?>("Jwt:AccessTokenExpiryMinutes");
+if (accessTokenExpiryMinutes is null or <= 0)
+    throw new InvalidOperationException("Jwt:AccessTokenExpiryMinutes must be a positive number.");
+
+var refreshTokenExpirationDays = builder.Configuration.GetValue<int?>("Jwt:RefreshTokenExpirationDays");
+if (refreshTokenExpirationDays is null or <= 0)
+    throw new InvalidOperationException("Jwt:RefreshTokenExpirationDays must be a positive number.");
 
 // Add services to the container.
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
+    options.UseNpgsql(connectionString)
            .UseSnakeCaseNamingConvention());
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>()
@@ -31,10 +53,6 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    var jwtKey = builder.Configuration["Jwt:Key"];
-    var jwtIssuer = builder.Configuration["Jwt:Issuer"];
-    var jwtAudience = builder.Configuration["Jwt:Audience"];
-
     options.MapInboundClaims = false;
 
     options.TokenValidationParameters = new TokenValidationParameters
@@ -110,14 +128,9 @@ app.UseMiddleware<Backend.Middleware.ExceptionHandlingMiddleware>();
 
 using (var scope = app.Services.CreateScope())
 {
-    /*
     var services = scope.ServiceProvider;
     var context = services.GetRequiredService<ApplicationDbContext>();
-    var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
-    var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
-    // Apply migrations and seed the database
-    context.Database.Migrate();
-    */
+    await context.Database.MigrateAsync();
     await DbSeeder.SeedAdminAsync(scope.ServiceProvider, app.Configuration);
 }
 
