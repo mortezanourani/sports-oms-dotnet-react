@@ -13,7 +13,11 @@ export default function AssignPositionModal({ user, open, onClose }) {
     try {
       await assignMutation.mutateAsync({
         userId: user.id,
-        payload: { ...values, startDate: values.startDate.format('YYYY-MM-DD') },
+        payload: {
+          ...values,
+          startDate: values.startDate.format('YYYY-MM-DD'),
+          endDate: values.endDate ? values.endDate.format('YYYY-MM-DD') : null,
+        },
       });
       message.success('سمت با موفقیت تخصیص داده شد');
       form.resetFields();

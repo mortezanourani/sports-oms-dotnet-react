@@ -1,104 +1,27 @@
-import { useEffect, useState } from 'react';
 import { Modal, Form, Input, Select, DatePicker, message } from 'antd';
-import { useCreateUser, useAssignFederationPosition, useUserByUsername } from '../../../hooks/useUsers';
+import { useCreateFederationRep } from '../../../hooks/useFederations';
 import { FEDERATION_POSITION_LABELS } from '../../../constants/labels';
-import { useAuth } from '../../../hooks/useAuth';
 
 export default function AddPositionModal({ federation, open, onClose }) {
     const [form] = Form.useForm();
-    const auth = useAuth();
-    
-    const [selectedUsername, setSelectedUsername] = useState(null);
-    const { data: existingUser, isLoading: isUserLoading } = useUserByUsername(selectedUsername);
-    
-    const createUserMutation = useCreateUser();
-    const assignPositionMutation = useAssignFederationPosition();
-
-    // Determine province and city based on user scope and federation context
-    const getProvinceId = () => {
-        if (auth.scopeLevel === 'Province') {
-            return auth.scopeProvinceId;
-        }
-        if (auth.scopeLevel === 'City') {
-            // For city-scoped users, we need to get the province from their city
-            return null; // This should be populated from backend/city data
-        }
-        // For Mastery users, use the federation's province
-        return federation?.provinceId || null;
-    };
-
-    const getCityId = () => {
-        if (auth.scopeLevel === 'City') {
-            return auth.scopeCityId;
-        }
-        // For other scopes, use the federation's city if available
-        return federation?.cityId || null;
-    };
-
-    useEffect(() => {
-        if (open && federation) {
-            // Set province based on user scope and federation context
-            if (auth.scopeLevel === 'Province') {
-                // setSelectedProvinceId(auth.scopeProvinceId); // Not needed anymore since province is auto-determined
-            } else if (federation.provinceId) {
-                // setSelectedProvinceId(federation.provinceId); // Not needed anymore since province is auto-determined
-            }
-        }
-    }, [open, federation, auth]);
-
-    const handleUsernameChange = (e) => {
-        const username = e.target.value;
-        setSelectedUsername(username);
-    };
-
-    const isExistingUser = existingUser && !isUserLoading;
-
+    const createFederationRepMutation = useCreateFederationRep();
     const handleFinish = async (values) => {
         try {
-            // Determine scope based on user's authorization level
-            const userScopeLevel = auth.scopeLevel;
-            const userProvinceId = getProvinceId();
-            const userCityId = getCityId();
-
-            let targetUserId;
-
-            // Check if user already exists
-            if (isExistingUser) {
-                // User exists, use their ID
-                targetUserId = existingUser.id;
-                message.info('کاربر existing است - فقط سمت اختصاص داده می‌شود');
-            } else {
-                // User doesn't exist, create them first
-                const createUserPayload = {
+            await createFederationRepMutation.mutateAsync({
+                federationId: federation.id,
+                payload: {
                     username: values.username,
-                    password: values.password,
+                    password: values.password || null,
                     firstName: values.firstName,
                     lastName: values.lastName,
-                    role: 'FederationRep',
-                    scopeLevel: userScopeLevel,
-                    scopeProvinceId: userProvinceId,
-                    scopeCityId: userCityId
-                };
-
-                const newUser = await createUserMutation.mutateAsync(createUserPayload);
-                targetUserId = newUser.id;
-            }
-
-            // Step 2: Assign the user to the federation position
-            const assignPayload = {
-                position: values.position,
-                startDate: values.startDate,
-                endDate: values.endDate || null
-            };
-
-            await assignPositionMutation.mutateAsync({
-                userId: targetUserId,
-                payload: assignPayload
+                    position: values.position,
+                    startDate: values.startDate.format('YYYY-MM-DD'),
+                    endDate: values.endDate ? values.endDate.format('YYYY-MM-DD') : null
+                }
             });
 
             message.success('سمت با موفقیت ایجاد و اختصاص داده شد');
             form.resetFields();
-            setSelectedUsername(null);
             onClose();
         } catch (err) {
             console.error('Error adding position:', err);
@@ -130,22 +53,16 @@ export default function AddPositionModal({ federation, open, onClose }) {
                     label="نام کاربری" 
                     rules={[{ required: true, message: 'لطفاً نام کاربری را وارد کنید' }]}
                 >
-                    <Input 
-                        placeholder="نام کاربری" 
-                        onChange={handleUsernameChange}
-                    />
+                    <Input placeholder="نام کاربری" />
                 </Form.Item>
 
-                {/* Show password field only when user doesn't exist (not loading) */}
-                {!isExistingUser && (
-                    <Form.Item 
-                        name="password" 
-                        label="کلمه عبور" 
-                        rules={[{ required: !isExistingUser, message: 'لطفاً کلمه عبور را وارد کنید' }]}
-                    >
-                        <Input.Password placeholder="کلمه عبور" />
-                    </Form.Item>
-                )}
+                <Form.Item
+                    name="password"
+                    label="کلمه عبور (فقط برای حساب جدید)"
+                    extra="برای حساب جدید الزامی است؛ برای حساب موجود خالی بگذارید."
+                >
+                    <Input.Password placeholder="کلمه عبور" />
+                </Form.Item>
 
                 <Form.Item 
                     name="firstName" 
@@ -206,7 +123,7 @@ export default function AddPositionModal({ federation, open, onClose }) {
                             <button
                                 type="button"
                                 onClick={() => form.submit()}
-                                disabled={createUserMutation.isPending || assignPositionMutation.isPending}
+                                disabled={createFederationRepMutation.isPending}
                                 style={{
                                     backgroundColor: '#00498d',
                                     color: '#fff',
@@ -216,7 +133,7 @@ export default function AddPositionModal({ federation, open, onClose }) {
                                     cursor: 'pointer'
                                 }}
                             >
-                                {createUserMutation.isPending || assignPositionMutation.isPending 
+                                {createFederationRepMutation.isPending
                                     ? 'در حال انجام...' 
                                     : 'ثبت'}
                             </button>
