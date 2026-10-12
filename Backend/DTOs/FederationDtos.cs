@@ -18,4 +18,13 @@
         Guid? ProvinceId, string? ProvinceName,
         Guid? CityId, string? CityName,
         bool HasChildren);
+
+    public record FederationRepAssignDto(
+        string Username,
+        string? Password,
+        string? FirstName,
+        string? LastName,
+        string Position,
+        DateOnly StartDate,
+        DateOnly? EndDate);
 }

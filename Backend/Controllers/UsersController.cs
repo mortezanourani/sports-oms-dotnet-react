@@ -6,6 +6,7 @@ using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
 using Backend.Extensions;
+using Backend.Services;
 
 namespace Backend.Controllers
 {
@@ -16,11 +17,16 @@ namespace Backend.Controllers
     {
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly FederationPositionService _federationPositionService;
 
-        public UsersController(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
+        public UsersController(
+            ApplicationDbContext db,
+            UserManager<ApplicationUser> userManager,
+            FederationPositionService federationPositionService)
         {
             _db = db;
             _userManager = userManager;
+            _federationPositionService = federationPositionService;
         }
 
         // Authorization logic:
@@ -262,14 +268,18 @@ namespace Backend.Controllers
         [HttpPost]
         public async Task<IActionResult> Create(UserCreateDto dto)
         {
-            if (!Enum.TryParse<UserRole>(dto.Role, out var roleEnum))
+            if (string.IsNullOrWhiteSpace(dto.Username))
+                return BadRequest(new { detail = "نام کاربری الزامی است" });
+
+            if (!Enum.TryParse<UserRole>(dto.Role, out var roleEnum) || !Enum.IsDefined(roleEnum))
                 return BadRequest(new { detail = "نقش انتخاب‌شده معتبر نیست" });
             
             // FederationRep accounts are managed through Federations API
             if (roleEnum == UserRole.FederationRep)
                 return BadRequest(new { detail = "ایجاد کاربر با نقش نماینده فدراسیون از طریق API فurasیون‌ها انجام می‌شود" });
             
-            if (!Enum.TryParse<ScopeLevel>(dto.ScopeLevel, out var scopeLevelEnum))
+            if (!Enum.TryParse<ScopeLevel>(dto.ScopeLevel, out var scopeLevelEnum) ||
+                !Enum.IsDefined(scopeLevelEnum))
                 return BadRequest(new { detail = "سطح دسترسی جغرافیایی معتبر نیست" });
 
             if (!CanCreateUsers())
@@ -281,15 +291,46 @@ namespace Backend.Controllers
             var scopeError = await ValidateScopeAsync(scopeLevelEnum, dto.ScopeProvinceId, dto.ScopeCityId);
             if (scopeError != null) return BadRequest(new { detail = scopeError });
 
+            var username = dto.Username.Trim();
+            var existingUser = await _userManager.FindByNameAsync(username);
+            if (existingUser != null)
+            {
+                if (existingUser.Role != UserRole.FederationRep)
+                    return Conflict(new { detail = "این نام کاربری قبلا برای یک نقش اصلی استفاده شده است" });
+
+                existingUser.Role = roleEnum;
+                existingUser.ScopeLevel = scopeLevelEnum;
+                existingUser.ScopeProvinceId = await GetScopeProvinceIdAsync(
+                    scopeLevelEnum, dto.ScopeProvinceId, dto.ScopeCityId);
+                existingUser.ScopeCityId = scopeLevelEnum == ScopeLevel.City ? dto.ScopeCityId : null;
+
+                var updateResult = await _userManager.UpdateAsync(existingUser);
+                if (!updateResult.Succeeded)
+                {
+                    var errors = string.Join(" / ", updateResult.Errors.Select(e => e.Description));
+                    return BadRequest(new { detail = errors });
+                }
+
+                return CreatedAtAction(nameof(Get), new { id = existingUser.Id },
+                    new UserOutDto(existingUser.Id, existingUser.UserName!, existingUser.FirstName ?? "",
+                        existingUser.LastName ?? "", existingUser.Role.ToString(), existingUser.ScopeLevel.ToString(),
+                        existingUser.ScopeProvinceId, null, existingUser.ScopeCityId, null));
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.Password))
+                return BadRequest(new { detail = "برای ایجاد حساب جدید، کلمه عبور الزامی است" });
+
+            var normalizedProvinceId = await GetScopeProvinceIdAsync(
+                scopeLevelEnum, dto.ScopeProvinceId, dto.ScopeCityId);
             var user = new ApplicationUser
             {
-                UserName = dto.Username,
-                Email = $"{dto.Username}@local",
+                UserName = username,
+                Email = $"{username}@local",
                 FirstName = dto.FirstName,
                 LastName = dto.LastName,
                 Role = roleEnum,
                 ScopeLevel = scopeLevelEnum,
-                ScopeProvinceId = scopeLevelEnum == ScopeLevel.Mastery ? null : dto.ScopeProvinceId,
+                ScopeProvinceId = normalizedProvinceId,
                 ScopeCityId = scopeLevelEnum == ScopeLevel.City ? dto.ScopeCityId : null,
                 EmailConfirmed = true
             };
@@ -323,14 +364,15 @@ namespace Backend.Controllers
             if (!CanManageTargetScope(user.ScopeLevel.ToString(), user.ScopeProvinceId, user.ScopeCityId, user.Role.ToString()))
                 return Forbid("شما اجازه ویرایش این کاربر را ندارید");
 
-            if (!Enum.TryParse<UserRole>(dto.Role, out var roleEnum))
+            if (!Enum.TryParse<UserRole>(dto.Role, out var roleEnum) || !Enum.IsDefined(roleEnum))
                 return BadRequest(new { detail = "نقش انتخاب‌شده معتبر نیست" });
             
             // FederationRep accounts are managed through Federations API
             if (roleEnum == UserRole.FederationRep)
                 return BadRequest(new { detail = "تغییر نقش به نماینده فurasیون از طریق API فurasیون‌ها انجام می‌شود" });
             
-            if (!Enum.TryParse<ScopeLevel>(dto.ScopeLevel, out var scopeLevelEnum))
+            if (!Enum.TryParse<ScopeLevel>(dto.ScopeLevel, out var scopeLevelEnum) ||
+                !Enum.IsDefined(scopeLevelEnum))
                 return BadRequest(new { detail = "سطح دسترسی جغرافیایی معتبر نیست" });
 
             // ALSO checked against the proposed NEW scope
@@ -344,7 +386,8 @@ namespace Backend.Controllers
             user.LastName = dto.LastName;
             user.Role = roleEnum;
             user.ScopeLevel = scopeLevelEnum;
-            user.ScopeProvinceId = scopeLevelEnum == ScopeLevel.Mastery ? null : dto.ScopeProvinceId;
+            user.ScopeProvinceId = await GetScopeProvinceIdAsync(
+                scopeLevelEnum, dto.ScopeProvinceId, dto.ScopeCityId);
             user.ScopeCityId = scopeLevelEnum == ScopeLevel.City ? dto.ScopeCityId : null;
 
             await _db.SaveChangesAsync();
@@ -385,23 +428,15 @@ namespace Backend.Controllers
             var federation = await _db.Federations.FindAsync(dto.FederationId);
             if (federation == null) return BadRequest(new { detail = "فurasیون انتخاب‌شده معتبر نیست" });
 
-            if (!Enum.TryParse<FederationPositionType>(dto.Position, out var positionEnum))
+            if (!Enum.TryParse<FederationPositionType>(dto.Position, out var positionEnum) ||
+                !Enum.IsDefined(positionEnum))
                 return BadRequest(new { detail = "سمت انتخاب‌شده معتبر نیست" });
 
-            // Allow user to hold multiple positions across different federations
-            var currentHolder = await _db.FederationPositions.FirstOrDefaultAsync(p =>
-                p.FederationId == dto.FederationId && p.Position == positionEnum && p.EndDate == null);
-            if (currentHolder != null) currentHolder.EndDate = dto.StartDate;
+            var (newPosition, error) = await _federationPositionService.AssignAsync(
+                user, federation, positionEnum, dto.StartDate, dto.EndDate);
+            if (error != null) return Conflict(new { detail = error });
 
-            var newPosition = new FederationPosition
-            {
-                UserId = id, FederationId = dto.FederationId, Position = positionEnum,
-                StartDate = dto.StartDate, EndDate = null
-            };
-            _db.FederationPositions.Add(newPosition);
-            await _db.SaveChangesAsync();
-
-            return Ok(new { success = true, positionId = newPosition.Id });
+            return Ok(new { success = true, positionId = newPosition!.Id });
         }
 
         [HttpGet("{id}/federation-positions")]
@@ -411,22 +446,26 @@ namespace Backend.Controllers
                 .Include(p => p.Federation).Include(p => p.User)
                 .Where(p => p.UserId == id)
                 .OrderByDescending(p => p.StartDate)
-                .Select(p => new FederationPositionOutDto(
-                    p.Id, p.Position.ToString(), p.StartDate, p.EndDate,
-                    p.UserId, p.User.FirstName!, p.User.LastName!,
-                    p.FederationId, p.Federation.Name ?? ""))
                 .ToListAsync();
 
-            return Ok(positions);
+            return Ok(positions.Select(p => new FederationPositionOutDto(
+                p.Id, p.Position.ToString(), p.StartDate,
+                p.EndDate ?? FederationPositionService.GetTermEndDate(p.StartDate),
+                p.UserId, p.User.FirstName ?? "", p.User.LastName ?? "",
+                p.FederationId, p.Federation.Name ?? "")));
         }
 
         private async Task<string?> ValidateScopeAsync(ScopeLevel level, Guid? provinceId, Guid? cityId)
         {
-            if (level == ScopeLevel.Mastery) return null;
+            if (level == ScopeLevel.Mastery)
+                return provinceId.HasValue || cityId.HasValue
+                    ? "دسترسی ملی نباید استان یا شهر داشته باشد"
+                    : null;
 
             if (level == ScopeLevel.Province)
             {
                 if (provinceId == null) return "برای دسترسی استانی، انتخاب استان الزامی است";
+                if (cityId.HasValue) return "دسترسی استانی نباید شهر داشته باشد";
                 if (!await _db.Provinces.AnyAsync(p => p.Id == provinceId)) return "استان انتخاب‌شده معتبر نیست";
                 return null;
             }
@@ -443,5 +482,19 @@ namespace Backend.Controllers
 
             return null;
         }
+
+        private async Task<Guid?> GetScopeProvinceIdAsync(
+            ScopeLevel level,
+            Guid? provinceId,
+            Guid? cityId)
+        {
+            if (level == ScopeLevel.Province) return provinceId;
+            if (level == ScopeLevel.City && cityId.HasValue)
+                return await _db.Cities.Where(c => c.Id == cityId.Value)
+                    .Select(c => (Guid?)c.ProvinceId)
+                    .FirstOrDefaultAsync();
+            return null;
+        }
+
     }
 }
