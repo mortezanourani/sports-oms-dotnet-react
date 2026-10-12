@@ -6,6 +6,7 @@ using Backend.DTOs;
 using Backend.Models;
 using Backend.Extensions;
 using Microsoft.AspNetCore.Identity;
+using Backend.Services;
 
 namespace Backend.Controllers
 {
@@ -16,10 +17,15 @@ namespace Backend.Controllers
     {
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
-        public FederationsController(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
+        private readonly FederationPositionService _federationPositionService;
+        public FederationsController(
+            ApplicationDbContext db,
+            UserManager<ApplicationUser> userManager,
+            FederationPositionService federationPositionService)
         {
             _db = db;
             _userManager = userManager;
+            _federationPositionService = federationPositionService;
         }
 
         // Users who can manage federations (Admin, Manager, SportsManager, SportsOfficer)
@@ -347,7 +353,7 @@ namespace Backend.Controllers
                 return Forbid("شما اجازه حذف فurasیون‌ها را ندارید");
 
             var federation = await _db.Federations
-                .Include(f => f.Province).Include(f => f.City)
+                .Include(f => f.Province).Include(f => f.City).ThenInclude(c => c!.Province)
                 .FirstOrDefaultAsync(f => f.Id == id);
             if (federation == null) return NotFound(new { detail = "فurasیون یافت نشد" });
 
@@ -383,56 +389,73 @@ namespace Backend.Controllers
                 .Include(p => p.User).Include(p => p.Federation)
                 .Where(p => p.FederationId == id)
                 .OrderByDescending(p => p.StartDate)
-                .Select(p => new FederationPositionOutDto(
-                    p.Id, p.Position.ToString(), p.StartDate, p.EndDate,
-                    p.UserId, p.User.FirstName!, p.User.LastName!,
-                    p.FederationId, p.Federation.Name ?? ""))
                 .ToListAsync();
 
-            return Ok(positions);
+            return Ok(positions.Select(p => new FederationPositionOutDto(
+                p.Id, p.Position.ToString(), p.StartDate,
+                p.EndDate ?? FederationPositionService.GetTermEndDate(p.StartDate),
+                p.UserId, p.User.FirstName ?? "", p.User.LastName ?? "",
+                p.FederationId, p.Federation.Name ?? "")));
         }
 
-        // FederationRep account management endpoints
-        // These endpoints allow Admin, Manager, SportsManager to create/update/delete FederationRep accounts
-
-        // DTO for creating/updating FederationRep
-        public class FederationRepAssignDto
-        {
-            public string Username { get; set; } = string.Empty;
-            public string? FirstName { get; set; }
-            public string? LastName { get; set; }
-            public string? Password { get; set; }
-        }
-
-        // Get FederationRep accounts for a federation
+        // FederationRep membership is represented by federation position history;
+        // a user may keep a main role and hold positions across different federations.
         [HttpGet("{id}/federation-reps")]
         public async Task<IActionResult> GetFederationReps(Guid id)
         {
-            var federation = await _db.Federations.FindAsync(id);
+            var federation = await _db.Federations
+                .Include(f => f.Province).Include(f => f.City).ThenInclude(c => c!.Province)
+                .FirstOrDefaultAsync(f => f.Id == id);
             if (federation == null) return NotFound(new { detail = "فurasیون یافت نشد" });
 
             if (!CanManageFederationRepScope(federation))
                 return Forbid("شما اجازه مشاهده نمایندگان فurasیون در این سطح را ندارید");
 
-            var reps = await _db.Users
-                .Where(u => u.Role == UserRole.FederationRep)
-                .Where(u => 
-                    (federation.Level == FederationLevel.Provincial && u.ScopeLevel == ScopeLevel.Province && u.ScopeProvinceId == federation.ProvinceId) ||
-                    (federation.Level == FederationLevel.City && u.ScopeLevel == ScopeLevel.City && u.ScopeCityId == federation.CityId))
-                .OrderBy(u => u.UserName)
-                .Select(u => new UserOutDto(
-                    u.Id, u.UserName!, u.FirstName ?? "", u.LastName ?? "", u.Role.ToString(), u.ScopeLevel.ToString(),
-                    u.ScopeProvinceId, u.ScopeProvince == null ? null : u.ScopeProvince.Name, u.ScopeCityId, u.ScopeCity == null ? null : u.ScopeCity.Name))
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var assignments = await _db.FederationPositions
+                .Include(p => p.User)
+                .Where(p => p.FederationId == id && p.StartDate <= today)
                 .ToListAsync();
+            var reps = assignments
+                .Where(p => (p.EndDate ?? FederationPositionService.GetTermEndDate(p.StartDate)) > today)
+                .GroupBy(p => p.UserId)
+                .Select(group => ToFederationRepOutDto(group.OrderByDescending(p => p.StartDate).First().User, federation))
+                .OrderBy(user => user.Username)
+                .ToList();
 
             return Ok(reps);
         }
 
-        // Create or update FederationRep account
-        [HttpPost("{id}/federation-reps")]
-        public async Task<IActionResult> CreateOrUpdateFederationRep(Guid id, FederationRepAssignDto dto)
+        [HttpGet("{id}/federation-reps/{userId}")]
+        public async Task<IActionResult> GetFederationRep(Guid id, Guid userId)
         {
-            var federation = await _db.Federations.FindAsync(id);
+            var federation = await _db.Federations
+                .Include(f => f.Province).Include(f => f.City).ThenInclude(c => c!.Province)
+                .FirstOrDefaultAsync(f => f.Id == id);
+            if (federation == null) return NotFound(new { detail = "فurasیون یافت نشد" });
+
+            if (!CanManageFederationRepScope(federation))
+                return Forbid("شما اجازه مشاهده نمایندگان فurasیون در این سطح را ندارید");
+
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var assignment = await _db.FederationPositions
+                .Include(p => p.User)
+                .Where(p => p.FederationId == id && p.UserId == userId && p.StartDate <= today)
+                .OrderByDescending(p => p.StartDate)
+                .ToListAsync();
+            var currentAssignment = assignment.FirstOrDefault(p =>
+                (p.EndDate ?? FederationPositionService.GetTermEndDate(p.StartDate)) > today);
+            if (currentAssignment == null) return NotFound(new { detail = "نماینده فدراسیون یافت نشد" });
+
+            return Ok(ToFederationRepOutDto(currentAssignment.User, federation));
+        }
+
+        [HttpPost("{id}/federation-reps")]
+        public async Task<IActionResult> CreateFederationRep(Guid id, FederationRepAssignDto dto)
+        {
+            var federation = await _db.Federations
+                .Include(f => f.Province).Include(f => f.City).ThenInclude(c => c!.Province)
+                .FirstOrDefaultAsync(f => f.Id == id);
             if (federation == null) return NotFound(new { detail = "فurasیون یافت نشد" });
 
             if (!CanManageFederationRepScope(federation))
@@ -441,68 +464,64 @@ namespace Backend.Controllers
             if (string.IsNullOrWhiteSpace(dto.Username))
                 return BadRequest(new { detail = "نام کاربری الزامی است" });
 
-            // Check if user exists
-            var user = await _db.Users.FirstOrDefaultAsync(u => u.UserName == dto.Username);
-            
-            bool isNewUser = false;
+            if (!Enum.TryParse<FederationPositionType>(dto.Position, out var positionEnum) ||
+                !Enum.IsDefined(positionEnum))
+                return BadRequest(new { detail = "سمت انتخاب‌شده معتبر نیست" });
+
+            var username = dto.Username.Trim();
+            var user = await _userManager.FindByNameAsync(username);
+            var isNewUser = user == null;
             if (user == null)
             {
-                // Create new user with FederationRep role
+                if (string.IsNullOrWhiteSpace(dto.Password))
+                    return BadRequest(new { detail = "برای ایجاد حساب جدید، کلمه عبور الزامی است" });
+
+                var scopeLevel = federation.Level switch
+                {
+                    FederationLevel.National => ScopeLevel.Mastery,
+                    FederationLevel.Provincial => ScopeLevel.Province,
+                    FederationLevel.City => ScopeLevel.City,
+                    _ => throw new InvalidOperationException("Unsupported federation level.")
+                };
                 user = new ApplicationUser
                 {
-                    UserName = dto.Username,
-                    Email = $"{dto.Username}@local",
+                    UserName = username,
+                    Email = $"{username}@local",
                     FirstName = dto.FirstName ?? "",
                     LastName = dto.LastName ?? "",
                     Role = UserRole.FederationRep,
-                    ScopeLevel = federation.Level == FederationLevel.Provincial ? ScopeLevel.Province : ScopeLevel.City,
-                    ScopeProvinceId = federation.ProvinceId,
+                    ScopeLevel = scopeLevel,
+                    ScopeProvinceId = federation.Level == FederationLevel.City
+                        ? federation.City?.ProvinceId
+                        : federation.ProvinceId,
                     ScopeCityId = federation.CityId,
                     EmailConfirmed = true
                 };
-                isNewUser = true;
-            }
-            else
-            {
-                // User exists - update their scope to match federation
-                if (federation.Level == FederationLevel.Provincial)
-                {
-                    user.ScopeLevel = ScopeLevel.Province;
-                    user.ScopeProvinceId = federation.ProvinceId;
-                    user.ScopeCityId = null;
-                }
-                else
-                {
-                    user.ScopeLevel = ScopeLevel.City;
-                    user.ScopeCityId = federation.CityId;
-                    user.ScopeProvinceId = null;
-                }
-
-                // User must have FederationRep role (or update their role)
-                if (user.Role != UserRole.FederationRep)
-                    user.Role = UserRole.FederationRep;
-
-                if (!string.IsNullOrEmpty(dto.FirstName)) user.FirstName = dto.FirstName;
-                if (!string.IsNullOrEmpty(dto.LastName)) user.LastName = dto.LastName;
             }
 
-            var result = isNewUser 
-                ? await _userManager.CreateAsync(user, dto.Password ?? "Default123!") 
-                : await _userManager.UpdateAsync(user);
-            
-            if (!result.Succeeded)
-            {
-                var errors = string.Join(" / ", result.Errors.Select(e => e.Description));
-                return BadRequest(new { detail = errors });
-            }
-
+            await using var transaction = await _db.Database.BeginTransactionAsync();
             if (isNewUser)
             {
-                return CreatedAtAction(nameof(GetFederationReps), new { id = federation.Id },
-                    new { userId = user.Id, username = user.UserName });
+                var createResult = await _userManager.CreateAsync(user!, dto.Password!);
+                if (!createResult.Succeeded)
+                {
+                    await transaction.RollbackAsync();
+                    var errors = string.Join(" / ", createResult.Errors.Select(e => e.Description));
+                    return BadRequest(new { detail = errors });
+                }
             }
 
-            return Ok(new { success = true, userId = user.Id, username = user.UserName });
+            var (position, error) = await _federationPositionService.AssignAsync(
+                user!, federation, positionEnum, dto.StartDate, dto.EndDate);
+            if (error != null)
+            {
+                await transaction.RollbackAsync();
+                return Conflict(new { detail = error });
+            }
+
+            await transaction.CommitAsync();
+            return CreatedAtAction(nameof(GetFederationRep), new { id, userId = user!.Id },
+                new { userId = user.Id, username = user.UserName, positionId = position!.Id });
         }
 
         // Update FederationRep account
@@ -515,25 +534,11 @@ namespace Backend.Controllers
             var user = await _db.Users.FindAsync(userId);
             if (user == null) return NotFound(new { detail = "کاربر یافت نشد" });
 
-            if (user.Role != UserRole.FederationRep)
-                return BadRequest(new { detail = "این کاربر دارای نقش نماینده فurasیون نیست" });
-
             if (!CanManageFederationRepScope(federation))
                 return Forbid("شما اجازه ویرایش این نماینده فurasیون را ندارید");
 
-            // Validate scope matches federation
-            if (federation.Level == FederationLevel.Provincial)
-            {
-                user.ScopeLevel = ScopeLevel.Province;
-                user.ScopeProvinceId = federation.ProvinceId;
-                user.ScopeCityId = null;
-            }
-            else
-            {
-                user.ScopeLevel = ScopeLevel.City;
-                user.ScopeCityId = federation.CityId;
-                user.ScopeProvinceId = null;
-            }
+            if (!await _db.FederationPositions.AnyAsync(p => p.FederationId == id && p.UserId == userId))
+                return NotFound(new { detail = "نماینده فدراسیون یافت نشد" });
 
             user.FirstName = dto.FirstName;
             user.LastName = dto.LastName;
@@ -548,7 +553,8 @@ namespace Backend.Controllers
             return Ok(new { success = true });
         }
 
-        // Deactivate FederationRep account (remove FederationRep role)
+        // End this user's assignments in the selected federation without disabling
+        // their account or affecting positions held in other federations.
         [HttpDelete("{id}/federation-reps/{userId}")]
         public async Task<IActionResult> DeactivateFederationRep(Guid id, Guid userId)
         {
@@ -558,17 +564,44 @@ namespace Backend.Controllers
             var user = await _db.Users.FindAsync(userId);
             if (user == null) return NotFound(new { detail = "کاربر یافت نشد" });
 
-            if (user.Role != UserRole.FederationRep)
-                return BadRequest(new { detail = "این کاربر دارای نقش نماینده فurasیون نیست" });
-
             if (!CanManageFederationRepScope(federation))
                 return Forbid("شما اجازه غیرفعال‌سازی این نماینده فurasیون را ندارید");
 
-            // Deactivate the user account
-            await _userManager.SetLockoutEnabledAsync(user, true);
-            await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var assignments = await _db.FederationPositions
+                .Where(p => p.FederationId == id && p.UserId == userId && p.StartDate <= today)
+                .ToListAsync();
+            if (assignments.Count == 0)
+                return NotFound(new { detail = "نماینده فدراسیون یافت نشد" });
+
+            foreach (var assignment in assignments)
+            {
+                var effectiveEndDate = assignment.EndDate ??
+                    FederationPositionService.GetTermEndDate(assignment.StartDate);
+                if (effectiveEndDate > today)
+                    assignment.EndDate = today;
+            }
+            await _db.SaveChangesAsync();
 
             return Ok(new { success = true });
+        }
+
+        private static UserOutDto ToFederationRepOutDto(ApplicationUser user, Federation federation)
+        {
+            var scopeLevel = federation.Level switch
+            {
+                FederationLevel.National => ScopeLevel.Mastery,
+                FederationLevel.Provincial => ScopeLevel.Province,
+                FederationLevel.City => ScopeLevel.City,
+                _ => throw new InvalidOperationException("Unsupported federation level.")
+            };
+
+            return new UserOutDto(
+                user.Id, user.UserName!, user.FirstName ?? "", user.LastName ?? "",
+                UserRole.FederationRep.ToString(), scopeLevel.ToString(),
+                federation.Level == FederationLevel.City ? federation.City?.ProvinceId : federation.ProvinceId,
+                federation.Province?.Name ?? federation.City?.Province?.Name,
+                federation.CityId, federation.City?.Name);
         }
 
         // Check if current user can manage FederationRep accounts for this federation
