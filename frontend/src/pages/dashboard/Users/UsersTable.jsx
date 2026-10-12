@@ -3,14 +3,13 @@ import {
   Table, Button, Space, Popconfirm, message, Modal, Form,
   Input, Select, Tag,
 } from 'antd';
-import { PlusOutlined, EditOutlined, StopOutlined, IdcardOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, StopOutlined } from '@ant-design/icons';
 import {
   useUsers, useUser, useCreateUser, useUpdateUser, useDeactivateUser,
 } from '../../../hooks/useUsers';
 import { useProvinces, useCities } from '../../../hooks/useLocations';
 import { useAuth } from '../../../hooks/useAuth';
 import { ROLE_LABELS, SCOPE_LEVEL_LABELS } from '../../../constants/labels';
-import AssignPositionModal from './AssignPositionModal';
 import {useGeoSections} from "../../../hooks/useGeoSections.js";
 
 export default function UsersList({ filters }) {
@@ -19,7 +18,6 @@ export default function UsersList({ filters }) {
   const { role: myRole } = useAuth();
   const isAdmin = ['Admin'].includes(myRole);
   const canManage = ['Admin', 'Manager', 'HumanResourceManager', 'HumanResourceOfficer', 'SportsManager', 'SportsOfficer'].includes(myRole);
-  const isSportsOfficers = ['SportsManager', 'SportsOfficer'].includes(myRole);
   // Manager can view this page (matches the backend's [Authorize(Roles =
   // "Admin,Manager")] on List/Get), but every write action is Admin-only
   // per the role table ("Manager ... can't create users and can't assign
@@ -28,7 +26,6 @@ export default function UsersList({ filters }) {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [positionUser, setPositionUser] = useState(null);
   const [scopeLevel, setScopeLevel] = useState('Mastery');
   const [selectedProvinceId, setSelectedProvinceId] = useState(null);
   const [form] = Form.useForm();
@@ -111,11 +108,6 @@ export default function UsersList({ filters }) {
       title: 'عملیات', key: 'actions',
       render: (_, record) => (
         <Space>
-          {canManage && record.role === 'FederationRep' && (
-            <Button icon={<IdcardOutlined />} size="small" onClick={() => setPositionUser(record)}>
-              سمت فدراسیون
-            </Button>
-          )}
           {canManage && (
             <>
               <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(record)} />
@@ -167,15 +159,9 @@ export default function UsersList({ filters }) {
             </Form.Item>
           </Space>
           <Form.Item name="role" label="نقش" rules={[{ required: true }]}>
-            {!isSportsOfficers && (
             <Select options={Object.entries(ROLE_LABELS)
-                .filter( ([value]) => !isAdmin ? value !== 'Admin' : true)
+                .filter(([value]) => value !== 'FederationRep' && (isAdmin || value !== 'Admin'))
                 .map(([value, label]) => ({ value, label }))} />
-            )}
-            {isSportsOfficers && (
-            <Select options={Object.entries({FederationRep: 'نماینده فدراسیون/هیات'})
-                .map(([value, label]) => ({ value, label }))} />
-            )}
           </Form.Item>
           <Form.Item name="scopeLevel" label="سطح دسترسی جغرافیایی" rules={[{ required: true }]}>
             <Select
@@ -220,8 +206,6 @@ export default function UsersList({ filters }) {
           )}
         </Form>
       </Modal>
-
-      <AssignPositionModal user={positionUser} open={!!positionUser} onClose={() => setPositionUser(null)} />
     </div>
   );
 }

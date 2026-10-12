@@ -40,3 +40,14 @@ export function useFederationPositions(id) {
     enabled: !!id,
   });
 }
+
+export function useCreateFederationRep() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.createFederationRep,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['federationPositions'] });
+      qc.invalidateQueries({ queryKey: ['federationReps'] });
+    },
+  });
+}
