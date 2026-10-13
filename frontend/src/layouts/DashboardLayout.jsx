@@ -28,15 +28,15 @@ const ROLE_MENU = {
     M5Manager: ['facilities', 'messages'],
     M5Officer: ['facilities', 'messages'],
     InsuranceOfficer: ['athletes', 'messages'],
-    SportsManager: ['champions', 'federations', 'users', 'messages'],
-    SportsOfficer: ['champions', 'federations', 'users', 'messages'],
+    SportsManager: ['champions', 'federations', 'messages'],
+    SportsOfficer: ['champions', 'federations', 'messages'],
     FederationRep: ['messages'],
 };
 
 const SCOPE_RESTRICTION = {
     Mastery: [],
     Province: ['locations'],
-    City: ['locations', 'users'],
+    City: ['locations'],
 }
 
 export default function DashboardLayout() {

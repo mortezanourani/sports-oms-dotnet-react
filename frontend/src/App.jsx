@@ -31,7 +31,9 @@ export default function App() {
             <Route path="/dashboard/champions" element={<ChampionsList />} />
             <Route path="/dashboard/federations" element={<FederationsList />} />
             <Route path="/dashboard/athletes" element={<AthleteCountsList />} />
-            <Route path="/dashboard/users" element={<UsersList />} />
+            <Route element={<ProtectedRoute allowedRoles={['Admin', 'Manager', 'HumanResourceManager', 'HumanResourceOfficer']} />}>
+              <Route path="/dashboard/users" element={<UsersList />} />
+            </Route>
               <Route path="/dashboard/locations" element={<LocationsPage />} />
               <Route path="/dashboard/messages" element={<MessagesPage />} />
           </Route>
