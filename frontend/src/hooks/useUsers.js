@@ -32,6 +32,14 @@ export function useCreateUser() {
   });
 }
 
+export function useImportUsers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.importUsers,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
 export function useUpdateUser() {
   const qc = useQueryClient();
   return useMutation({
