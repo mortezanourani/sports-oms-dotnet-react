@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using DocumentFormat.OpenXml.Packaging;
 using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
@@ -15,6 +16,9 @@ namespace Backend.Controllers
     [Authorize(Roles = "Admin,Manager,HumanResourceManager,HumanResourceOfficer,SportsManager,SportsOfficer")]
     public class UsersController : ControllerBase
     {
+        private const string ImportDefaultPassword = "P@ssw0rd";
+        private const string UserManagementRoles = "Admin,Manager,HumanResourceManager,HumanResourceOfficer";
+
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly FederationPositionService _federationPositionService;
@@ -29,16 +33,19 @@ namespace Backend.Controllers
             _federationPositionService = federationPositionService;
         }
 
-        // Authorization logic:
-        // Admins also have scope limitations:
-        // - Mastery Admin can edit all Admin users
-        // - Province Admin can only edit Province Admin (in their province) and City Admin (in their province)
-        // - City Admin can only edit City Admin (in their city)
-        // - Manager, HumanResourceManager, HumanResourceOfficer can manage users in their scope + lower scopes
+        // Geographic restrictions apply to all target roles:
+        // - Mastery scope can manage any scope
+        // - Province scope can manage that province and its cities
+        // - City scope can manage only that city
         // 
         // FederationRep accounts are managed through Federations API only
         // This controller NEVER handles FederationRep role users
-        private bool CanManageTargetScope(string targetScopeLevel, Guid? targetProvinceId, Guid? targetCityId, string? targetRole)
+        private bool CanManageTargetScope(
+            string targetScopeLevel,
+            Guid? targetProvinceId,
+            Guid? targetCityId,
+            string? targetRole,
+            bool enforceRoleRestrictions = true)
         {
             var myRole = User.Role();
             var myScope = User.ScopeLevel();
@@ -110,17 +117,16 @@ namespace Backend.Controllers
             // Role-based restrictions for HumanResourceManager and HumanResourceOfficer
             if (myRole == "HumanResourceManager" || myRole == "HumanResourceOfficer")
             {
-                // Cannot manage Admin users
-                if (targetRole == "Admin")
-                    return false;
-
-                // HumanResourceManager cannot manage Manager users
-                if (myRole == "HumanResourceManager" && targetRole == "Manager")
-                    return false;
-
-                // HumanResourceOfficer cannot manage HumanResourceManager, Manager, or Admin users
-                if (myRole == "HumanResourceOfficer" && targetRole is "HumanResourceManager" or "Manager" or "Admin")
-                    return false;
+                if (enforceRoleRestrictions)
+                {
+                    if (targetRole == "Admin")
+                        return false;
+                    if (myRole == "HumanResourceManager" && targetRole == "Manager")
+                        return false;
+                    if (myRole == "HumanResourceOfficer" &&
+                        targetRole is "HumanResourceManager" or "Manager" or "Admin")
+                        return false;
+                }
 
                 // Check scope
                 if (myScope == "Mastery")
@@ -144,16 +150,16 @@ namespace Backend.Controllers
 
         // Helper methods for role-based permissions
         private bool HasUserManagementRole() => 
-            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer" or "SportsManager" or "SportsOfficer";
+            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer";
 
         // Check if current user has permission to create users
         // Does NOT include FederationRep - that's handled in FederationsController
         private bool CanCreateUsers() => 
-            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer" or "SportsManager" or "SportsOfficer";
+            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer";
 
         // Check if current user has permission to edit users
         private bool CanEditUsers() => 
-            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer" or "SportsManager" or "SportsOfficer";
+            User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "HumanResourceOfficer";
 
         // Check if current user has permission to deactivate users
         private bool CanDeactivateUsers() =>
@@ -161,6 +167,7 @@ namespace Backend.Controllers
 
         // GET /api/users?scopeLevel=&provinceId=&cityId=
         [HttpGet]
+        [Authorize(Roles = UserManagementRoles)]
         public async Task<IActionResult> List(string? scopeLevel, Guid? provinceId, Guid? cityId)
         {
             var qs = _db.Users.Include(u => u.ScopeProvince).Include(u => u.ScopeCity).AsQueryable();
@@ -248,6 +255,7 @@ namespace Backend.Controllers
         }
 
         [HttpGet("{id}")]
+        [Authorize(Roles = UserManagementRoles)]
         public async Task<IActionResult> Get(Guid id)
         {
             var u = await _db.Users.Include(x => x.ScopeProvince).Include(x => x.ScopeCity)
@@ -266,6 +274,7 @@ namespace Backend.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = UserManagementRoles)]
         public async Task<IActionResult> Create(UserCreateDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.Username))
@@ -347,7 +356,244 @@ namespace Backend.Controllers
                     user.ScopeLevel.ToString(), user.ScopeProvinceId, null, user.ScopeCityId, null));
         }
 
+        [HttpGet("import/template")]
+        [Authorize(Roles = UserManagementRoles)]
+        public IActionResult DownloadImportTemplate()
+        {
+            if (!CanCreateUsers())
+                return Forbid("شما اجازه ایجاد کاربر ندارید");
+
+            return File(
+                UserImportWorkbook.CreateTemplate(),
+                UserImportWorkbook.ContentType,
+                "users-import-template.xlsx");
+        }
+
+        [HttpPost("import")]
+        [Authorize(Roles = UserManagementRoles)]
+        [RequestSizeLimit(10_000_000)]
+        public async Task<IActionResult> Import([FromForm] IFormFile? file)
+        {
+            if (!CanCreateUsers())
+                return Forbid("شما اجازه ایجاد کاربر ندارید");
+
+            if (file == null || file.Length == 0)
+                return BadRequest(new { detail = "لطفا فایل اکسل را انتخاب کنید" });
+
+            if (!string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { detail = "فرمت فایل باید Excel (.xlsx) باشد" });
+
+            IReadOnlyList<UserImportRow> rows;
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                rows = UserImportWorkbook.Read(stream);
+            }
+            catch (InvalidDataException ex)
+            {
+                return BadRequest(new { detail = ex.Message });
+            }
+            catch (ArgumentException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست" });
+            }
+            catch (IOException)
+            {
+                return BadRequest(new { detail = "خواندن فایل اکسل با خطا مواجه شد" });
+            }
+            catch (OpenXmlPackageException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست" });
+            }
+
+            var provinces = await _db.Provinces
+                .Select(province => new { province.Id, province.Name })
+                .ToListAsync();
+            var cities = await _db.Cities
+                .Select(city => new { city.Id, city.Name, city.ProvinceId })
+                .ToListAsync();
+            var created = 0;
+            var skippedExisting = 0;
+            var skippedRequired = 0;
+            var errors = new List<UserImportRowError>();
+
+            foreach (var row in rows)
+            {
+                if (string.IsNullOrWhiteSpace(row.Username) ||
+                    string.IsNullOrWhiteSpace(row.FirstName) ||
+                    string.IsNullOrWhiteSpace(row.LastName) ||
+                    string.IsNullOrWhiteSpace(row.Scope) ||
+                    string.IsNullOrWhiteSpace(row.Role))
+                {
+                    skippedRequired++;
+                    continue;
+                }
+
+                var username = row.Username.Trim();
+                if (await _userManager.FindByNameAsync(username) != null)
+                {
+                    skippedExisting++;
+                    continue;
+                }
+
+                if (!UserImportWorkbook.TryParseRole(row.Role, out var role) ||
+                    role == UserRole.FederationRep)
+                {
+                    errors.Add(new UserImportRowError(row.RowNumber, "نقش نامعتبر است یا پشتیبانی نمی‌شود."));
+                    continue;
+                }
+
+                if (!UserImportWorkbook.TryParseScope(row.Scope, out var scopeLevel))
+                {
+                    errors.Add(new UserImportRowError(row.RowNumber, "سطح دسترسی نامعتبر است."));
+                    continue;
+                }
+
+                var provinceId = (Guid?)null;
+                var cityId = (Guid?)null;
+                if (scopeLevel == ScopeLevel.Mastery)
+                {
+                    if (row.ProvinceName != null || row.CityName != null)
+                    {
+                        errors.Add(new UserImportRowError(row.RowNumber, "در سطح Mastery نباید استان یا شهری وارد شود."));
+                        continue;
+                    }
+                }
+                else if (scopeLevel == ScopeLevel.Province)
+                {
+                    var provinceMatches = provinces
+                        .Where(province => string.Equals(
+                            province.Name.Trim(), row.ProvinceName, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+
+                    if (row.CityName != null || provinceMatches.Count != 1)
+                    {
+                        errors.Add(new UserImportRowError(
+                            row.RowNumber,
+                            provinceMatches.Count == 0
+                                ? "نام استان وارد نشده یا با استان ثبت‌شده مطابقت ندارد."
+                                : "نام استان تکراری است یا برای سطح Province شهر وارد شده است."));
+                        continue;
+                    }
+
+                    provinceId = provinceMatches[0].Id;
+                }
+                else
+                {
+                    var matchingProvinces = row.ProvinceName == null
+                        ? null
+                        : provinces.Where(province => string.Equals(
+                            province.Name.Trim(), row.ProvinceName, StringComparison.OrdinalIgnoreCase)).ToList();
+
+                    if (matchingProvinces is { Count: not 1 })
+                    {
+                        errors.Add(new UserImportRowError(
+                            row.RowNumber,
+                            matchingProvinces.Count == 0
+                                ? "نام استان با استان ثبت‌شده مطابقت ندارد."
+                                : "نام استان تکراری است."));
+                        continue;
+                    }
+
+                    var cityMatches = cities
+                        .Where(city => string.Equals(
+                            city.Name.Trim(), row.CityName, StringComparison.OrdinalIgnoreCase))
+                        .Where(city => matchingProvinces == null || city.ProvinceId == matchingProvinces[0].Id)
+                        .ToList();
+
+                    if (row.CityName == null || cityMatches.Count != 1)
+                    {
+                        errors.Add(new UserImportRowError(
+                            row.RowNumber,
+                            cityMatches.Count == 0
+                                ? "نام شهر وارد نشده یا با شهر ثبت‌شده مطابقت ندارد."
+                                : "نام شهر تکراری است؛ نام استان را نیز وارد کنید."));
+                        continue;
+                    }
+
+                    cityId = cityMatches[0].Id;
+                    provinceId = cityMatches[0].ProvinceId;
+                }
+
+                if (!CanManageTargetScope(
+                        scopeLevel.ToString(), provinceId, cityId, role.ToString(),
+                        enforceRoleRestrictions: false))
+                {
+                    errors.Add(new UserImportRowError(row.RowNumber, "شما اجازه ایجاد کاربر با این نقش و سطح دسترسی را ندارید."));
+                    continue;
+                }
+
+                if (!CanImportTargetRole(role))
+                {
+                    errors.Add(new UserImportRowError(row.RowNumber, "شما اجازه ایجاد کاربر با این سمت را ندارید."));
+                    continue;
+                }
+
+                var gender = (Gender?)null;
+                if (row.Gender != null)
+                {
+                    if (!UserImportWorkbook.TryParseGender(row.Gender, out var parsedGender))
+                    {
+                        errors.Add(new UserImportRowError(row.RowNumber, "جنسیت باید مرد یا زن باشد."));
+                        continue;
+                    }
+
+                    gender = parsedGender;
+                }
+
+                var user = new ApplicationUser
+                {
+                    UserName = username,
+                    Email = $"{username}@local",
+                    PhoneNumber = row.PhoneNumber,
+                    FirstName = row.FirstName.Trim(),
+                    LastName = row.LastName.Trim(),
+                    FatherName = row.FatherName,
+                    Gender = gender,
+                    Role = role,
+                    ScopeLevel = scopeLevel,
+                    ScopeProvinceId = provinceId,
+                    ScopeCityId = cityId,
+                    EmailConfirmed = true
+                };
+
+                var result = await _userManager.CreateAsync(user, ImportDefaultPassword);
+                if (result.Succeeded)
+                {
+                    created++;
+                    continue;
+                }
+
+                if (result.Errors.Any(error => error.Code == "DuplicateUserName"))
+                {
+                    skippedExisting++;
+                    continue;
+                }
+
+                errors.Add(new UserImportRowError(
+                    row.RowNumber,
+                    string.Join(" / ", result.Errors.Select(error => error.Description))));
+            }
+
+            return Ok(new UserImportResultDto(
+                created,
+                skippedExisting,
+                skippedRequired,
+                errors.Count,
+                errors));
+        }
+
+        private bool CanImportTargetRole(UserRole targetRole)
+        {
+            if (targetRole == UserRole.FederationRep ||
+                !Enum.TryParse<UserRole>(User.Role(), out var uploaderRole))
+                return false;
+
+            return UserImportAuthorization.CanAssignRole(uploaderRole, targetRole);
+        }
+
         [HttpPut("{id}")]
+        [Authorize(Roles = UserManagementRoles)]
         public async Task<IActionResult> Update(Guid id, UserUpdateDto dto)
         {
             var user = await _db.Users.FindAsync(id);
@@ -395,6 +641,7 @@ namespace Backend.Controllers
         }
 
         [HttpDelete("{id}")]
+        [Authorize(Roles = UserManagementRoles)]
         public async Task<IActionResult> Deactivate(Guid id)
         {
             var user = await _userManager.FindByIdAsync(id.ToString());
