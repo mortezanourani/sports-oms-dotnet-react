@@ -1,10 +1,12 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using DocumentFormat.OpenXml.Packaging;
 using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
 using Backend.Extensions;
+using Backend.Services;
 
 namespace Backend.Controllers
 {
@@ -13,11 +15,186 @@ namespace Backend.Controllers
     [Authorize]
     public class LocationsController : ControllerBase
     {
+        private const string MasteryOrProvinceAdminRoles = "Admin";
         private readonly ApplicationDbContext _db;
 
         public LocationsController(ApplicationDbContext db)
         {
             _db = db;
+        }
+
+        [HttpGet("import/template")]
+        [Authorize(Roles = MasteryOrProvinceAdminRoles)]
+        public IActionResult DownloadImportTemplate()
+        {
+            if (IsCityScope())
+                return Forbid("شما اجازه مدیریت مکان‌ها را ندارید");
+
+            return File(
+                LocationImportWorkbook.CreateTemplate(),
+                LocationImportWorkbook.ContentType,
+                "locations-import-template.xlsx");
+        }
+
+        [HttpPost("import")]
+        [Authorize(Roles = MasteryOrProvinceAdminRoles)]
+        [RequestSizeLimit(10_000_000)]
+        public async Task<IActionResult> Import([FromForm] IFormFile? file)
+        {
+            if (IsCityScope())
+                return Forbid("شما اجازه مدیریت مکان‌ها را ندارید");
+
+            if (file == null || file.Length == 0)
+                return BadRequest(new { detail = "لطفا فایل اکسل را انتخاب کنید" });
+
+            if (!string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { detail = "فرمت فایل باید Excel (.xlsx) باشد" });
+
+            IReadOnlyList<LocationImportRow> rows;
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                rows = LocationImportWorkbook.Read(stream);
+            }
+            catch (InvalidDataException ex)
+            {
+                return BadRequest(new { detail = ex.Message });
+            }
+            catch (ArgumentException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست" });
+            }
+            catch (IOException)
+            {
+                return BadRequest(new { detail = "خواندن فایل اکسل با خطا مواجه شد" });
+            }
+            catch (OpenXmlPackageException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست" });
+            }
+
+            var provinceEntities = await _db.Provinces.ToListAsync();
+            var provincesByName = provinceEntities
+                .GroupBy(province => LocationImportWorkbook.NormalizeName(province.Name), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+            var cityKeys = (await _db.Cities
+                    .Select(city => new { city.ProvinceId, city.Name })
+                    .ToListAsync())
+                .Select(city => (city.ProvinceId, Name: LocationImportWorkbook.NormalizeName(city.Name)))
+                .ToHashSet();
+            var createdProvinces = 0;
+            var createdCities = 0;
+            var skippedExisting = 0;
+            var skippedMissingProvince = 0;
+            var skippedInvalidProvince = 0;
+            var errors = new List<LocationImportRowError>();
+
+            // Import province rows first so a city row can refer to a province
+            // even when it appears later in the workbook.
+            foreach (var row in rows.Where(row => row.CityName == null))
+            {
+                if (string.IsNullOrWhiteSpace(row.ProvinceName))
+                {
+                    skippedMissingProvince++;
+                    continue;
+                }
+
+                var provinceName = row.ProvinceName.Trim();
+                var key = LocationImportWorkbook.NormalizeName(provinceName);
+                if (provincesByName.ContainsKey(key))
+                {
+                    skippedExisting++;
+                    continue;
+                }
+
+                if (IsProvinceScope())
+                {
+                    errors.Add(new LocationImportRowError(row.RowNumber, "در سطح استانی امکان ایجاد استان جدید وجود ندارد."));
+                    continue;
+                }
+
+                var province = new Province { Name = provinceName };
+                _db.Provinces.Add(province);
+                try
+                {
+                    await _db.SaveChangesAsync();
+                    provincesByName.Add(key, province);
+                    createdProvinces++;
+                }
+                catch (DbUpdateException)
+                {
+                    _db.Entry(province).State = EntityState.Detached;
+                    var existingProvince = await _db.Provinces
+                        .FirstOrDefaultAsync(item => item.Name == provinceName);
+                    if (existingProvince != null)
+                    {
+                        provincesByName[key] = existingProvince;
+                        skippedExisting++;
+                    }
+                    else
+                    {
+                        errors.Add(new LocationImportRowError(row.RowNumber, "ذخیره استان با خطا مواجه شد."));
+                    }
+                }
+            }
+
+            foreach (var row in rows.Where(row => row.CityName != null))
+            {
+                if (string.IsNullOrWhiteSpace(row.ProvinceName))
+                {
+                    skippedMissingProvince++;
+                    continue;
+                }
+
+                var provinceKey = LocationImportWorkbook.NormalizeName(row.ProvinceName);
+                if (!provincesByName.TryGetValue(provinceKey, out var province))
+                {
+                    skippedInvalidProvince++;
+                    continue;
+                }
+
+                if (IsProvinceScope() && province.Id != User.ScopeProvinceId())
+                {
+                    errors.Add(new LocationImportRowError(row.RowNumber, "شما اجازه ایجاد شهر در این استان را ندارید."));
+                    continue;
+                }
+
+                var cityName = row.CityName!.Trim();
+                var cityKey = LocationImportWorkbook.NormalizeName(cityName);
+                if (cityKeys.Contains((province.Id, cityKey)))
+                {
+                    skippedExisting++;
+                    continue;
+                }
+
+                var city = new City { ProvinceId = province.Id, Name = cityName };
+                _db.Cities.Add(city);
+                try
+                {
+                    await _db.SaveChangesAsync();
+                    cityKeys.Add((province.Id, cityKey));
+                    createdCities++;
+                }
+                catch (DbUpdateException)
+                {
+                    _db.Entry(city).State = EntityState.Detached;
+                    var duplicate = await _db.Cities.AnyAsync(item => item.ProvinceId == province.Id &&
+                        item.Name == cityName);
+                    if (duplicate)
+                        skippedExisting++;
+                    else
+                        errors.Add(new LocationImportRowError(row.RowNumber, "ذخیره شهرستان با خطا مواجه شد."));
+                }
+            }
+
+            return Ok(new LocationImportResultDto(
+                createdProvinces,
+                createdCities,
+                skippedExisting,
+                skippedMissingProvince,
+                skippedInvalidProvince,
+                errors.Count,
+                errors));
         }
 
         // Helper methods
