@@ -13,6 +13,9 @@ export default function UsersList() {
   const geo = useGeoSections();
   const { role: myRole } = useAuth();
   const canManage = ['Admin', 'Manager', 'HumanResourceManager', 'HumanResourceOfficer'].includes(myRole);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [fileList, setFileList] = useState([]);
+  const [selectedFile, setSelectedFile] = useState(null);
   const [importResult, setImportResult] = useState(null);
   const importMutation = useImportUsers();
 
@@ -32,9 +35,14 @@ export default function UsersList() {
     }
   };
 
-  const handleImport = async ({ file }) => {
+  const handleImport = async () => {
+    if (!selectedFile) return;
+
     try {
-      const result = await importMutation.mutateAsync(file);
+      const result = await importMutation.mutateAsync(selectedFile);
+      setImportModalOpen(false);
+      setFileList([]);
+      setSelectedFile(null);
       setImportResult(result);
     } catch (error) {
       message.error(error.response?.data?.detail || 'وارد کردن کاربران با خطا مواجه شد');
@@ -93,24 +101,58 @@ export default function UsersList() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>کاربران</Title>
           {canManage && (
-            <Space>
-              <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>دانلود قالب</Button>
-              <Upload
-                accept=".xlsx"
-                disabled={importMutation.isPending}
-                showUploadList={false}
-                maxCount={1}
-                beforeUpload={(file) => {
-                  void handleImport({ file });
-                  return false;
-                }}
-              >
-                <Button icon={<UploadOutlined />} loading={importMutation.isPending}>وارد کردن کاربران</Button>
-              </Upload>
-            </Space>
+            <Button
+              icon={<UploadOutlined />}
+              onClick={() => setImportModalOpen(true)}
+            >
+              وارد کردن کاربران
+            </Button>
           )}
         </div>
         <Tabs items={items} />
+        <Modal
+          title="وارد کردن کاربران"
+          open={importModalOpen}
+          onCancel={() => {
+            if (importMutation.isPending) return;
+            setImportModalOpen(false);
+            setFileList([]);
+            setSelectedFile(null);
+          }}
+          onOk={handleImport}
+          okText="بارگذاری"
+          cancelText="انصراف"
+          okButtonProps={{ disabled: !selectedFile }}
+          confirmLoading={importMutation.isPending}
+          closable={!importMutation.isPending}
+          maskClosable={!importMutation.isPending}
+        >
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>
+              دانلود فایل قالب
+            </Button>
+            <Upload
+              accept=".xlsx"
+              fileList={fileList}
+              maxCount={1}
+              disabled={importMutation.isPending}
+              beforeUpload={() => false}
+              onChange={({ fileList: nextFileList }) => {
+                const next = nextFileList.slice(-1);
+                setFileList(next);
+                setSelectedFile(next[0]?.originFileObj || null);
+              }}
+              onRemove={() => {
+                setSelectedFile(null);
+                setFileList([]);
+              }}
+            >
+              <Button icon={<UploadOutlined />} disabled={importMutation.isPending}>
+                انتخاب فایل Excel
+              </Button>
+            </Upload>
+          </Space>
+        </Modal>
         <Modal
           title="نتیجه وارد کردن کاربران"
           open={Boolean(importResult)}
