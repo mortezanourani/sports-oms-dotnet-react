@@ -5,6 +5,15 @@ export const getProvinces = async () => {
     return data;
 };
 
+export const importLocations = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return (await api.post('/locations/import', formData)).data;
+};
+
+export const downloadLocationsImportTemplate = async () =>
+    (await api.get('/locations/import/template', { responseType: 'blob' })).data;
+
 export const createProvince = async (payload) => {
     const { data } = await api.post('/locations/provinces', payload);
     return data;

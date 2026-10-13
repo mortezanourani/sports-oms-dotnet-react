@@ -5,6 +5,17 @@ export function useProvinces() {
     return useQuery({ queryKey: ['provinces'], queryFn: api.getProvinces });
 }
 
+export function useImportLocations() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: api.importLocations,
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['provinces'] });
+            qc.invalidateQueries({ queryKey: ['cities'] });
+        },
+    });
+}
+
 export function useCreateProvince() {
     const qc = useQueryClient();
     return useMutation({
