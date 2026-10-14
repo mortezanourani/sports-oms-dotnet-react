@@ -63,3 +63,13 @@ export function useDeleteMedal() {
         },
     });
 }
+
+export function useImportChampions() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: api.importChampions,
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['champions'] });
+        },
+    });
+}

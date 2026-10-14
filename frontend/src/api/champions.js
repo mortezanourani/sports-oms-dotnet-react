@@ -32,3 +32,12 @@ export const addMedal = async ({ championId, payload }) => {
 export const deleteMedal = async ({ championId, medalId }) => {
     await api.delete(`/champions/${championId}/medals/${medalId}`);
 };
+
+export const importChampions = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return (await api.post('/champions/import', formData)).data;
+};
+
+export const downloadChampionsImportTemplate = async () =>
+    (await api.get('/champions/import/template', { responseType: 'blob' })).data;
