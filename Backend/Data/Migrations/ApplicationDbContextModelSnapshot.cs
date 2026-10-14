@@ -422,7 +422,6 @@ namespace Backend.Data.Migrations
                         .HasColumnName("id");
 
                     b.Property<string>("Category")
-                        .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("category");
 

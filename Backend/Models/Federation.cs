@@ -22,7 +22,7 @@ namespace Backend.Models
         // plus the province/city name, computed in the DTO, never stored.
         public string? Name { get; set; }
 
-        public FederationCategory Category { get; set; }
+        public FederationCategory? Category { get; set; }
         public FederationLevel Level { get; set; }
 
         public Guid? ParentFederationId { get; set; }
