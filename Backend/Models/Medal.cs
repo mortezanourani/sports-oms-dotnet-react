@@ -4,7 +4,10 @@ namespace Backend.Models
     {
         Gold,
         Silver,
-        Bronze
+        Bronze,
+        TeamGold,
+        TeamSilver,
+        TeamBronze
     }
 
     public enum AgeGroup
@@ -18,7 +21,6 @@ namespace Backend.Models
 
     public enum TournamentLevel
     {
-        Local,
         Provincial,
         National,
         International
