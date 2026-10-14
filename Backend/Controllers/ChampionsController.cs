@@ -6,6 +6,7 @@ using Backend.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using DocumentFormat.OpenXml.Packaging;
 
 namespace Backend.Controllers
 {
@@ -16,11 +17,322 @@ namespace Backend.Controllers
     {
         private readonly ApplicationDbContext _db;
         private readonly ScopeService _scope;
+        private const string ChampionImportRoles = "Admin,Manager,SportsManager,SportsOfficer";
 
         public ChampionsController(ApplicationDbContext db, ScopeService scope)
         {
             _db = db;
             _scope = scope;
+        }
+
+        [HttpGet("import/template")]
+        [Authorize(Roles = ChampionImportRoles)]
+        public IActionResult DownloadImportTemplate()
+        {
+            return File(
+                ChampionImportWorkbook.CreateTemplate(),
+                ChampionImportWorkbook.ContentType,
+                "champions-import-template.xlsx");
+        }
+
+        [HttpPost("import")]
+        [Authorize(Roles = ChampionImportRoles)]
+        [RequestSizeLimit(10_000_000)]
+        public async Task<IActionResult> Import([FromForm] IFormFile? file)
+        {
+            if (!HasChampionPermission())
+                return Forbid("شما اجازه وارد کردن قهرمانان را ندارید");
+            if (file == null || file.Length == 0)
+                return BadRequest(new { detail = "لطفا فایل اکسل را انتخاب کنید" });
+            if (!string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { detail = "فرمت فایل باید Excel (.xlsx) باشد" });
+
+            IReadOnlyList<ChampionImportRow> rows;
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                rows = ChampionImportWorkbook.Read(stream);
+            }
+            catch (InvalidDataException ex)
+            {
+                return BadRequest(new { detail = ex.Message });
+            }
+            catch (ArgumentException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست" });
+            }
+            catch (IOException)
+            {
+                return BadRequest(new { detail = "خواندن فایل اکسل با خطا مواجه شد" });
+            }
+            catch (OpenXmlPackageException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست" });
+            }
+
+            var provinces = await _db.Provinces.ToListAsync();
+            var cities = await _db.Cities.ToListAsync();
+            var federations = await _db.Federations
+                .Where(federation => federation.Level == FederationLevel.National && federation.Name != null)
+                .ToListAsync();
+            var existingChampions = await _db.Champions
+                .Select(champion => new
+                {
+                    champion.Id,
+                    champion.FullName,
+                    champion.Gender,
+                    champion.FederationId,
+                    champion.CityId
+                })
+                .ToListAsync();
+            var championIdsByKey = existingChampions
+                .GroupBy(champion => (
+                    Name: ChampionImportWorkbook.NormalizeName(champion.FullName),
+                    champion.Gender,
+                    champion.FederationId,
+                    champion.CityId))
+                .ToDictionary(group => group.Key, group => group.First().Id);
+            var medalKeys = (await _db.Medals
+                    .Select(medal => new
+                    {
+                        medal.ChampionId,
+                        medal.MedalType,
+                        medal.AgeGroup,
+                        medal.Level,
+                        medal.CompetitionName,
+                        medal.Year,
+                        medal.Field
+                    })
+                    .ToListAsync())
+                .Select(medal => (
+                    medal.ChampionId,
+                    medal.MedalType,
+                    medal.AgeGroup,
+                    medal.Level,
+                    Competition: ChampionImportWorkbook.NormalizeName(medal.CompetitionName),
+                    medal.Year,
+                    Field: medal.Field == null ? string.Empty : ChampionImportWorkbook.NormalizeName(medal.Field)))
+                .ToHashSet();
+
+            var createdChampions = 0;
+            var existingChampionRows = 0;
+            var createdMedals = 0;
+            var skippedExistingMedals = 0;
+            var skippedInvalid = 0;
+            var skippedOutOfScope = 0;
+            var errors = new List<ChampionImportRowError>();
+
+            foreach (var row in rows)
+            {
+                if (string.IsNullOrWhiteSpace(row.FullName) ||
+                    string.IsNullOrWhiteSpace(row.FederationName) ||
+                    !ChampionImportWorkbook.TryParseGender(row.Gender, out var gender))
+                {
+                    skippedInvalid++;
+                    errors.Add(new ChampionImportRowError(
+                        row.RowNumber, "نام کامل، جنسیت معتبر و نام فدراسیون الزامی است."));
+                    continue;
+                }
+
+                Province? province = null;
+                City? city = null;
+                if (row.CityName != null && row.ProvinceName == null)
+                {
+                    skippedInvalid++;
+                    errors.Add(new ChampionImportRowError(row.RowNumber, "برای تعیین شهرستان، نام استان نیز الزامی است."));
+                    continue;
+                }
+
+                if (row.ProvinceName != null)
+                {
+                    var provinceKey = ChampionImportWorkbook.NormalizeName(row.ProvinceName);
+                    var provinceMatches = provinces.Where(item =>
+                        ChampionImportWorkbook.NormalizeName(item.Name) == provinceKey).ToList();
+                    if (provinceMatches.Count != 1)
+                    {
+                        skippedInvalid++;
+                        errors.Add(new ChampionImportRowError(row.RowNumber, "نام استان معتبر نیست یا تکراری است."));
+                        continue;
+                    }
+
+                    province = provinceMatches[0];
+                    if (row.CityName == null)
+                    {
+                        skippedInvalid++;
+                        errors.Add(new ChampionImportRowError(
+                            row.RowNumber, "ثبت قهرمان در سطح استان پشتیبانی نمی‌شود؛ نام شهرستان الزامی است."));
+                        continue;
+                    }
+                }
+
+                if (row.CityName != null)
+                {
+                    var cityKey = ChampionImportWorkbook.NormalizeName(row.CityName);
+                    var cityMatches = cities.Where(item =>
+                        item.ProvinceId == province!.Id &&
+                        ChampionImportWorkbook.NormalizeName(item.Name) == cityKey).ToList();
+                    if (cityMatches.Count != 1)
+                    {
+                        skippedInvalid++;
+                        errors.Add(new ChampionImportRowError(
+                            row.RowNumber, "نام شهرستان با استان مطابقت ندارد یا معتبر نیست."));
+                        continue;
+                    }
+
+                    city = cityMatches[0];
+                }
+
+                if (!CanImportChampionAtScope(province?.Id, city?.Id))
+                {
+                    skippedOutOfScope++;
+                    continue;
+                }
+
+                var federationName = ChampionImportWorkbook.NormalizeName(row.FederationName);
+                var federationMatches = federations.Where(item =>
+                    ChampionImportWorkbook.NormalizeName(item.Name!) == federationName).ToList();
+                if (federationMatches.Count != 1)
+                {
+                    skippedInvalid++;
+                    errors.Add(new ChampionImportRowError(
+                        row.RowNumber, "نام فدراسیون کشوری معتبر نیست یا تکراری است."));
+                    continue;
+                }
+
+                var federation = federationMatches[0];
+                var championKey = (
+                    Name: ChampionImportWorkbook.NormalizeName(row.FullName),
+                    Gender: gender,
+                    FederationId: federation.Id,
+                    CityId: city?.Id);
+                var championExists = championIdsByKey.TryGetValue(championKey, out var existingChampionId);
+                var champion = championExists ? null : new Champion
+                {
+                    FullName = row.FullName.Trim(),
+                    Gender = gender,
+                    BirthDate = ChampionImportWorkbook.TryParseSolarDate(row.BirthDate, out var birthDate)
+                        ? birthDate
+                        : null,
+                    FederationId = federation.Id,
+                    CityId = city?.Id
+                };
+
+                if (championExists)
+                    existingChampionRows++;
+
+                Medal? medal = null;
+                string? medalValidationError = null;
+                if (string.IsNullOrWhiteSpace(row.MedalType) ||
+                    string.IsNullOrWhiteSpace(row.AgeGroup) ||
+                    string.IsNullOrWhiteSpace(row.TournamentLevel) ||
+                    string.IsNullOrWhiteSpace(row.Year) ||
+                    string.IsNullOrWhiteSpace(row.Count) ||
+                    string.IsNullOrWhiteSpace(row.CompetitionName) ||
+                    !ChampionImportWorkbook.TryParseMedalType(row.MedalType, out var medalType) ||
+                    !ChampionImportWorkbook.TryParseAgeGroup(row.AgeGroup, out var ageGroup) ||
+                    !ChampionImportWorkbook.TryParseTournamentLevel(row.TournamentLevel, out var level) ||
+                    !ChampionImportWorkbook.TryParseInteger(row.Year, out var year) || year <= 0 ||
+                    !ChampionImportWorkbook.TryParseInteger(row.Count, out var count) || count < 1)
+                {
+                    medalValidationError = "اطلاعات الزامی مدال ناقص یا نامعتبر است؛ اطلاعات معتبر قهرمان ثبت شد.";
+                }
+                else if (championExists)
+                {
+                    var medalKey = (
+                        ChampionId: existingChampionId,
+                        MedalType: medalType,
+                        AgeGroup: ageGroup,
+                        Level: level,
+                        Competition: ChampionImportWorkbook.NormalizeName(row.CompetitionName),
+                        Year: year,
+                        Field: row.Field == null ? string.Empty : ChampionImportWorkbook.NormalizeName(row.Field));
+                    if (medalKeys.Contains(medalKey))
+                    {
+                        skippedExistingMedals++;
+                        continue;
+                    }
+                    medal = new Medal
+                    {
+                        ChampionId = medalKey.ChampionId,
+                        MedalType = medalType,
+                        AgeGroup = ageGroup,
+                        Level = level,
+                        CompetitionName = row.CompetitionName.Trim(),
+                        Year = year,
+                        Count = count,
+                        Field = string.IsNullOrWhiteSpace(row.Field) ? null : row.Field.Trim()
+                    };
+                }
+                else
+                {
+                    medal = new Medal
+                    {
+                        Champion = champion!,
+                        MedalType = medalType,
+                        AgeGroup = ageGroup,
+                        Level = level,
+                        CompetitionName = row.CompetitionName.Trim(),
+                        Year = year,
+                        Count = count,
+                        Field = string.IsNullOrWhiteSpace(row.Field) ? null : row.Field.Trim()
+                    };
+                }
+
+                if (champion != null)
+                    _db.Champions.Add(champion);
+                if (medal != null)
+                    _db.Medals.Add(medal);
+                if (champion != null || medal != null)
+                {
+                    await _db.SaveChangesAsync();
+                    if (champion != null)
+                    {
+                        championIdsByKey.Add(championKey, champion.Id);
+                        createdChampions++;
+                    }
+                    if (medal != null)
+                    {
+                        var championId = champion?.Id ?? medal.ChampionId;
+                        medalKeys.Add((
+                            ChampionId: championId,
+                            medal.MedalType,
+                            medal.AgeGroup,
+                            medal.Level,
+                            Competition: ChampionImportWorkbook.NormalizeName(medal.CompetitionName),
+                            medal.Year,
+                            Field: medal.Field == null ? string.Empty : ChampionImportWorkbook.NormalizeName(medal.Field)));
+                        createdMedals++;
+                    }
+                }
+
+                if (medalValidationError != null)
+                {
+                    skippedInvalid++;
+                    errors.Add(new ChampionImportRowError(row.RowNumber, medalValidationError));
+                }
+            }
+
+            return Ok(new ChampionImportResultDto(
+                createdChampions,
+                existingChampionRows,
+                createdMedals,
+                skippedExistingMedals,
+                skippedInvalid,
+                skippedOutOfScope,
+                errors));
+        }
+
+        private bool CanImportChampionAtScope(Guid? provinceId, Guid? cityId)
+        {
+            var scopeLevel = User.ScopeLevel();
+            if (scopeLevel == "Mastery")
+                return true;
+            if (scopeLevel == "Province")
+                return provinceId.HasValue && cityId.HasValue &&
+                       User.ScopeProvinceId() == provinceId;
+            if (scopeLevel == "City")
+                return cityId.HasValue && User.ScopeCityId() == cityId;
+            return false;
         }
 
         // Helper methods for permission checks
