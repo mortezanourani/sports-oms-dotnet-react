@@ -7,6 +7,7 @@ using Backend.Models;
 using Backend.Extensions;
 using Microsoft.AspNetCore.Identity;
 using Backend.Services;
+using DocumentFormat.OpenXml.Packaging;
 
 namespace Backend.Controllers
 {
@@ -37,6 +38,400 @@ namespace Backend.Controllers
         private bool HasFederationPermission() => FederationManagerRoles.Contains(User.Role());
 
         private bool HasDeletePermission() => FederationDeleterRoles.Contains(User.Role());
+
+        private const string FederationImportRoles = "Admin,Manager,SportsManager,SportsOfficer";
+        private const string FederationRepImportPassword = "P@ssw0rd";
+
+        [HttpGet("import/template")]
+        [Authorize(Roles = FederationImportRoles)]
+        public IActionResult DownloadImportTemplate()
+        {
+            return File(
+                FederationImportWorkbook.CreateTemplate(),
+                FederationImportWorkbook.ContentType,
+                "federations-import-template.xlsx");
+        }
+
+        [HttpPost("import")]
+        [Authorize(Roles = FederationImportRoles)]
+        [RequestSizeLimit(10_000_000)]
+        public async Task<IActionResult> Import([FromForm] IFormFile? file)
+        {
+            if (!HasFederationPermission())
+                return Forbid("شما اجازه وارد کردن فدراسیون را ندارید");
+            if (file == null || file.Length == 0)
+                return BadRequest(new { detail = "لطفا فایل اکسل را انتخاب کنید" });
+            if (!string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { detail = "فرمت فایل باید Excel (.xlsx) باشد" });
+
+            IReadOnlyList<FederationImportRow> rows;
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                rows = FederationImportWorkbook.Read(stream);
+            }
+            catch (InvalidDataException ex)
+            {
+                return BadRequest(new { detail = ex.Message });
+            }
+            catch (ArgumentException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست" });
+            }
+            catch (IOException)
+            {
+                return BadRequest(new { detail = "خواندن فایل اکسل با خطا مواجه شد" });
+            }
+            catch (OpenXmlPackageException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست" });
+            }
+
+            var provinces = await _db.Provinces.ToListAsync();
+            var cities = await _db.Cities.ToListAsync();
+            var nationalFederations = await _db.Federations
+                .Where(item => item.Level == FederationLevel.National)
+                .ToListAsync();
+            var createdFederations = 0;
+            var skippedExistingFederations = 0;
+            var createdRepAccounts = 0;
+            var assignedPositions = 0;
+            var skippedRepAssignments = 0;
+            var skippedInvalid = 0;
+            var skippedOutOfScope = 0;
+            var errors = new List<FederationImportRowError>();
+
+            foreach (var row in rows)
+            {
+                if (string.IsNullOrWhiteSpace(row.FederationName))
+                {
+                    skippedInvalid++;
+                    errors.Add(new FederationImportRowError(row.RowNumber, "نام فدراسیون الزامی است."));
+                    continue;
+                }
+
+                var federationName = row.FederationName.Trim();
+                var normalizedFederationName = FederationImportWorkbook.NormalizeName(federationName);
+                Province? province = null;
+                City? city = null;
+
+                if (row.CityName != null && row.ProvinceName == null)
+                {
+                    skippedInvalid++;
+                    errors.Add(new FederationImportRowError(row.RowNumber, "برای تعیین شهرستان، نام استان نیز الزامی است."));
+                    continue;
+                }
+
+                if (row.ProvinceName != null)
+                {
+                    var provinceKey = FederationImportWorkbook.NormalizeName(row.ProvinceName);
+                    var provinceMatches = provinces.Where(item =>
+                        FederationImportWorkbook.NormalizeName(item.Name) == provinceKey).ToList();
+                    if (provinceMatches.Count != 1)
+                    {
+                        skippedInvalid++;
+                        errors.Add(new FederationImportRowError(row.RowNumber, "نام استان معتبر نیست یا تکراری است."));
+                        continue;
+                    }
+
+                    province = provinceMatches[0];
+                }
+
+                if (row.CityName != null)
+                {
+                    var cityKey = FederationImportWorkbook.NormalizeName(row.CityName);
+                    var cityMatches = cities.Where(item =>
+                        item.ProvinceId == province!.Id &&
+                        FederationImportWorkbook.NormalizeName(item.Name) == cityKey).ToList();
+                    if (cityMatches.Count != 1)
+                    {
+                        skippedInvalid++;
+                        errors.Add(new FederationImportRowError(row.RowNumber, "نام شهرستان با استان مطابقت ندارد یا معتبر نیست."));
+                        continue;
+                    }
+
+                    city = cityMatches[0];
+                }
+
+                var level = city != null
+                    ? FederationLevel.City
+                    : province != null
+                        ? FederationLevel.Provincial
+                        : FederationLevel.National;
+                if (!CanImportFederationAtScope(level, province?.Id, city?.Id))
+                {
+                    skippedOutOfScope++;
+                    continue;
+                }
+
+                Federation? federation;
+                if (level == FederationLevel.National)
+                {
+                    federation = nationalFederations.FirstOrDefault(item =>
+                        item.Name != null &&
+                        FederationImportWorkbook.NormalizeName(item.Name) == normalizedFederationName);
+                    if (federation == null)
+                    {
+                        federation = new Federation
+                        {
+                            Name = federationName,
+                            Level = FederationLevel.National,
+                            Category = null
+                        };
+                        _db.Federations.Add(federation);
+                        await _db.SaveChangesAsync();
+                        nationalFederations.Add(federation);
+                        createdFederations++;
+                    }
+                    else
+                    {
+                        skippedExistingFederations++;
+                    }
+                }
+                else
+                {
+                    var nationalFederation = nationalFederations.FirstOrDefault(item =>
+                        item.Name != null &&
+                        FederationImportWorkbook.NormalizeName(item.Name) == normalizedFederationName);
+                    if (nationalFederation == null)
+                    {
+                        skippedInvalid++;
+                        errors.Add(new FederationImportRowError(
+                            row.RowNumber, "فدراسیون کشوری والد از قبل ثبت نشده است."));
+                        continue;
+                    }
+
+                    Federation? provincialFederation = null;
+                    if (level == FederationLevel.City)
+                    {
+                        provincialFederation = await _db.Federations.FirstOrDefaultAsync(item =>
+                            item.Level == FederationLevel.Provincial &&
+                            item.ParentFederationId == nationalFederation.Id &&
+                            item.ProvinceId == province!.Id);
+                        if (provincialFederation == null)
+                        {
+                            if (!CanManageProvincial(province!.Id))
+                            {
+                                skippedOutOfScope++;
+                                continue;
+                            }
+
+                            provincialFederation = new Federation
+                            {
+                                Level = FederationLevel.Provincial,
+                                ParentFederationId = nationalFederation.Id,
+                                ProvinceId = province.Id,
+                                Category = nationalFederation.Category
+                            };
+                            _db.Federations.Add(provincialFederation);
+                            await _db.SaveChangesAsync();
+                            createdFederations++;
+                        }
+                    }
+
+                    federation = level == FederationLevel.Provincial
+                        ? await _db.Federations.FirstOrDefaultAsync(item =>
+                            item.Level == FederationLevel.Provincial &&
+                            item.ParentFederationId == nationalFederation.Id &&
+                            item.ProvinceId == province!.Id)
+                        : await _db.Federations.FirstOrDefaultAsync(item =>
+                            item.Level == FederationLevel.City &&
+                            item.ParentFederationId == provincialFederation!.Id &&
+                            item.CityId == city!.Id);
+
+                    if (federation == null)
+                    {
+                        federation = new Federation
+                        {
+                            Level = level,
+                            ParentFederationId = level == FederationLevel.Provincial
+                                ? nationalFederation.Id
+                                : provincialFederation!.Id,
+                            ProvinceId = level == FederationLevel.Provincial ? province!.Id : null,
+                            CityId = level == FederationLevel.City ? city!.Id : null,
+                            Category = nationalFederation.Category
+                        };
+                        _db.Federations.Add(federation);
+                        await _db.SaveChangesAsync();
+                        createdFederations++;
+                    }
+                    else
+                    {
+                        skippedExistingFederations++;
+                    }
+                }
+
+                if (!CanImportFederationRepAtScope(level, province?.Id, city?.Id))
+                {
+                    skippedOutOfScope++;
+                    continue;
+                }
+
+                var repValidationError = ValidateImportedRep(row, out var position, out var startDate,
+                    out var endDate, out var gender, out var phoneNumber);
+                if (repValidationError != null)
+                {
+                    skippedRepAssignments++;
+                    errors.Add(new FederationImportRowError(row.RowNumber, repValidationError));
+                    continue;
+                }
+
+                var username = row.Username!.Trim();
+                var user = await _userManager.FindByNameAsync(username);
+                var isNewUser = user == null;
+                user ??= new ApplicationUser
+                {
+                    UserName = username,
+                    Email = $"{username}@local",
+                    FirstName = row.FirstName!.Trim(),
+                    LastName = row.LastName!.Trim(),
+                    PhoneNumber = phoneNumber,
+                    Gender = gender,
+                    Role = UserRole.FederationRep,
+                    ScopeLevel = level switch
+                    {
+                        FederationLevel.National => ScopeLevel.Mastery,
+                        FederationLevel.Provincial => ScopeLevel.Province,
+                        FederationLevel.City => ScopeLevel.City,
+                        _ => throw new InvalidOperationException("Unsupported federation level.")
+                    },
+                    ScopeProvinceId = province?.Id,
+                    ScopeCityId = city?.Id,
+                    EmailConfirmed = true
+                };
+
+                await using var transaction = await _db.Database.BeginTransactionAsync();
+                if (isNewUser)
+                {
+                    var createResult = await _userManager.CreateAsync(user, FederationRepImportPassword);
+                    if (!createResult.Succeeded)
+                    {
+                        await transaction.RollbackAsync();
+                        _db.Entry(user).State = EntityState.Detached;
+                        skippedRepAssignments++;
+                        errors.Add(new FederationImportRowError(
+                            row.RowNumber,
+                            string.Join(" / ", createResult.Errors.Select(error => error.Description))));
+                        continue;
+                    }
+                }
+
+                var (assignedPosition, assignmentError) = await _federationPositionService.AssignAsync(
+                    user, federation, position!.Value, startDate!.Value, endDate,
+                    persistCalculatedEndDateWhenUnspecified: false);
+                if (assignmentError != null)
+                {
+                    await transaction.RollbackAsync();
+                    if (isNewUser)
+                        _db.Entry(user).State = EntityState.Detached;
+                    skippedRepAssignments++;
+                    errors.Add(new FederationImportRowError(row.RowNumber, assignmentError));
+                    continue;
+                }
+
+                await transaction.CommitAsync();
+                if (isNewUser)
+                    createdRepAccounts++;
+                assignedPositions++;
+            }
+
+            return Ok(new FederationImportResultDto(
+                createdFederations,
+                skippedExistingFederations,
+                createdRepAccounts,
+                assignedPositions,
+                skippedRepAssignments,
+                skippedInvalid,
+                skippedOutOfScope,
+                errors));
+        }
+
+        private bool CanImportFederationAtScope(
+            FederationLevel level,
+            Guid? provinceId,
+            Guid? cityId) =>
+            level switch
+            {
+                FederationLevel.National => CanManageMastery(),
+                FederationLevel.Provincial => provinceId.HasValue && CanManageProvincial(provinceId.Value),
+                FederationLevel.City => provinceId.HasValue && cityId.HasValue &&
+                                        CanManageCity(cityId.Value, provinceId.Value),
+                _ => false
+            };
+
+        private bool CanImportFederationRepAtScope(
+            FederationLevel level,
+            Guid? provinceId,
+            Guid? cityId)
+        {
+            if (!HasFederationPermission())
+                return false;
+
+            return level switch
+            {
+                FederationLevel.National => User.ScopeLevel() == "Mastery",
+                FederationLevel.Provincial => provinceId.HasValue &&
+                    (User.ScopeLevel() == "Mastery" ||
+                     User.ScopeLevel() == "Province" && User.ScopeProvinceId() == provinceId),
+                FederationLevel.City => cityId.HasValue && provinceId.HasValue &&
+                    (User.ScopeLevel() == "Mastery" ||
+                     User.ScopeLevel() == "Province" && User.ScopeProvinceId() == provinceId ||
+                     User.ScopeLevel() == "City" && User.ScopeCityId() == cityId),
+                _ => false
+            };
+        }
+
+        private static string? ValidateImportedRep(
+            FederationImportRow row,
+            out FederationPositionType? position,
+            out DateOnly? startDate,
+            out DateOnly? endDate,
+            out Gender? gender,
+            out string? phoneNumber)
+        {
+            position = null;
+            startDate = null;
+            endDate = null;
+            gender = null;
+            phoneNumber = null;
+
+            if (string.IsNullOrWhiteSpace(row.Username) ||
+                string.IsNullOrWhiteSpace(row.FirstName) ||
+                string.IsNullOrWhiteSpace(row.LastName) ||
+                string.IsNullOrWhiteSpace(row.Position) ||
+                string.IsNullOrWhiteSpace(row.StartDate))
+                return "اطلاعات الزامی نماینده ناقص است؛ فدراسیون ثبت شد اما انتصاب نماینده انجام نشد.";
+
+            if (!FederationImportWorkbook.TryParsePosition(row.Position, out var parsedPosition))
+                return "سمت نماینده معتبر نیست؛ فدراسیون ثبت شد اما انتصاب نماینده انجام نشد.";
+            if (!FederationImportWorkbook.TryParseSolarDate(row.StartDate, out var parsedStartDate))
+                return "تاریخ انتصاب باید تاریخ شمسی معتبر با قالب سال/ماه/روز باشد؛ فدراسیون ثبت شد اما انتصاب نماینده انجام نشد.";
+
+            position = parsedPosition;
+            startDate = parsedStartDate;
+
+            if (row.EndDate != null)
+            {
+                if (!FederationImportWorkbook.TryParseSolarDate(row.EndDate, out var parsedEndDate))
+                    return "تاریخ اتمام معتبر نیست؛ فدراسیون ثبت شد اما انتصاب نماینده انجام نشد.";
+                endDate = parsedEndDate;
+            }
+
+            if (row.Gender != null)
+            {
+                if (!FederationImportWorkbook.TryParseGender(row.Gender, out var parsedGender))
+                    return "جنسیت نماینده معتبر نیست؛ فدراسیون ثبت شد اما انتصاب نماینده انجام نشد.";
+                gender = parsedGender;
+            }
+
+            if (row.PhoneNumber != null)
+            {
+                if (!FederationImportWorkbook.TryParsePhoneNumber(row.PhoneNumber, out phoneNumber))
+                    return "شماره همراه نماینده معتبر نیست؛ فدراسیون ثبت شد اما انتصاب نماینده انجام نشد.";
+            }
+
+            return null;
+        }
 
         // Can this user manage entities at the given scope level or lower?
         // Hierarchy: Mastery > Province > City

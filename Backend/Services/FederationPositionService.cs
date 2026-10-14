@@ -15,7 +15,8 @@ namespace Backend.Services
             Federation federation,
             FederationPositionType position,
             DateOnly startDate,
-            DateOnly? endDate)
+            DateOnly? endDate,
+            bool persistCalculatedEndDateWhenUnspecified = true)
         {
             DateOnly termEndDate;
             try
@@ -68,7 +69,9 @@ namespace Backend.Services
                 FederationId = federation.Id,
                 Position = position,
                 StartDate = startDate,
-                EndDate = newEndDate
+                EndDate = persistCalculatedEndDateWhenUnspecified || endDate.HasValue
+                    ? newEndDate
+                    : null
             };
 
             _db.FederationPositions.Add(newPosition);
