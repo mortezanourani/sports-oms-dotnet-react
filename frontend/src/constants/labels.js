@@ -6,7 +6,10 @@ export const GENDER_LABELS = {
 export const MEDAL_TYPE_LABELS = {
     Gold: 'طلا',
     Silver: 'نقره',
-    Bronze: 'برنز'
+    Bronze: 'برنز',
+    TeamGold: 'طلای تیمی',
+    TeamSilver: 'نقره تیمی',
+    TeamBronze: 'برنز تیمی'
 };
 
 export const AGE_GROUP_LABELS = {
@@ -18,7 +21,6 @@ export const AGE_GROUP_LABELS = {
 };
 
 export const TOURNAMENT_LEVEL_LABELS = {
-    Local: 'محلی',
     Provincial: 'استانی',
     National: 'کشوری',
     International: 'بین‌المللی'
