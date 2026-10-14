@@ -5,6 +5,19 @@ export function useFederations(params) {
   return useQuery({ queryKey: ['federations', params], queryFn: () => api.getFederations(params) });
 }
 
+export function useImportFederations() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.importFederations,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['federations'] });
+      qc.invalidateQueries({ queryKey: ['federationPositions'] });
+      qc.invalidateQueries({ queryKey: ['federationReps'] });
+      qc.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}
+
 export function useCreateFederation() {
   const qc = useQueryClient();
   return useMutation({
