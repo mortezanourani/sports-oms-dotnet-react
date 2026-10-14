@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using DocumentFormat.OpenXml.Packaging;
 using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
@@ -35,6 +36,190 @@ namespace Backend.Controllers
         private bool CanCreate() => HasFullAccess();
         private bool CanUpdate() => HasFullAccess();
         private bool CanDelete() => HasFullAccess();
+
+        [HttpGet("import/template")]
+        [Authorize(Roles = "Admin,Manager,InsuranceOfficer")]
+        public IActionResult DownloadImportTemplate()
+        {
+            return File(
+                AthleteCountImportWorkbook.CreateTemplate(),
+                AthleteCountImportWorkbook.ContentType,
+                "athlete-counts-import-template.xlsx");
+        }
+
+        [HttpPost("import")]
+        [Authorize(Roles = "Admin,Manager,InsuranceOfficer")]
+        [RequestSizeLimit(10_000_000)]
+        public async Task<IActionResult> Import([FromForm] IFormFile? file)
+        {
+            if (!CanCreate())
+                return Forbid("شما اجازه ایجاد آمار ورزشکاران را ندارید");
+
+            if (file == null || file.Length == 0)
+                return BadRequest(new { detail = "لطفا فایل اکسل را انتخاب کنید" });
+
+            if (!string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { detail = "فرمت فایل باید Excel (.xlsx) باشد" });
+
+            IReadOnlyList<AthleteCountImportRow> rows;
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                rows = AthleteCountImportWorkbook.Read(stream);
+            }
+            catch (InvalidDataException ex)
+            {
+                return BadRequest(new { detail = ex.Message });
+            }
+            catch (ArgumentException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست" });
+            }
+            catch (IOException)
+            {
+                return BadRequest(new { detail = "خواندن فایل اکسل با خطا مواجه شد" });
+            }
+            catch (OpenXmlPackageException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست" });
+            }
+
+            var federations = await _db.Federations
+                .Where(federation => federation.Level == FederationLevel.National)
+                .Select(federation => new { federation.Id, federation.Name })
+                .ToListAsync();
+            var provinces = await _db.Provinces
+                .Select(province => new { province.Id, province.Name })
+                .ToListAsync();
+            var cities = await _db.Cities
+                .Select(city => new { city.Id, city.Name, city.ProvinceId })
+                .ToListAsync();
+            var existingRecords = (await _db.AthleteCounts
+                    .Select(record => new
+                    {
+                        record.FederationId,
+                        record.CityId,
+                        record.Year,
+                        record.Month,
+                        record.Gender
+                    })
+                    .ToListAsync())
+                .Select(record => (
+                    FederationId: record.FederationId,
+                    CityId: record.CityId,
+                    Year: record.Year,
+                    Month: record.Month,
+                    Gender: record.Gender))
+                .ToHashSet();
+            var addedRecords = new List<AthleteCount>();
+            var created = 0;
+            var skippedInvalid = 0;
+            var skippedOutOfScope = 0;
+            var skippedExisting = 0;
+            var errors = new List<AthleteCountImportRowError>();
+
+            foreach (var row in rows)
+            {
+                if (row.FederationName == null || row.ProvinceName == null || row.CityName == null ||
+                    row.Year == null || row.Month == null || row.MenCount == null || row.WomenCount == null ||
+                    !AthleteCountImportWorkbook.TryParseInteger(row.Year, out var year) || year <= 0 ||
+                    !AthleteCountImportWorkbook.TryParseMonth(row.Month, out var month) ||
+                    !AthleteCountImportWorkbook.TryParseInteger(row.MenCount, out var menCount) || menCount < 0 ||
+                    !AthleteCountImportWorkbook.TryParseInteger(row.WomenCount, out var womenCount) || womenCount < 0)
+                {
+                    skippedInvalid++;
+                    errors.Add(new AthleteCountImportRowError(
+                        row.RowNumber, "همه ستون‌ها باید مقدار معتبر داشته باشند؛ سال مثبت، ماه بین ۱ تا ۱۲ و تعدادها نامنفی باشند."));
+                    continue;
+                }
+
+                var federationMatches = federations.Where(federation =>
+                    federation.Name != null &&
+                    AthleteCountImportWorkbook.NormalizeName(federation.Name) ==
+                    AthleteCountImportWorkbook.NormalizeName(row.FederationName)).ToList();
+                var provinceMatches = provinces.Where(province =>
+                    AthleteCountImportWorkbook.NormalizeName(province.Name) ==
+                    AthleteCountImportWorkbook.NormalizeName(row.ProvinceName)).ToList();
+
+                if (federationMatches.Count != 1 || provinceMatches.Count != 1)
+                {
+                    skippedInvalid++;
+                    errors.Add(new AthleteCountImportRowError(
+                        row.RowNumber,
+                        federationMatches.Count != 1
+                            ? "نام فدراسیون کشوری معتبر نیست یا تکراری است."
+                            : "نام استان معتبر نیست یا تکراری است."));
+                    continue;
+                }
+
+                var cityMatches = cities.Where(city =>
+                    city.ProvinceId == provinceMatches[0].Id &&
+                    AthleteCountImportWorkbook.NormalizeName(city.Name) ==
+                    AthleteCountImportWorkbook.NormalizeName(row.CityName)).ToList();
+                if (cityMatches.Count != 1)
+                {
+                    skippedInvalid++;
+                    errors.Add(new AthleteCountImportRowError(
+                        row.RowNumber, "شهرستان با استان انتخاب‌شده مطابقت ندارد یا معتبر نیست."));
+                    continue;
+                }
+
+                try
+                {
+                    await _scope.CheckCityAllowedAsync(User, cityMatches[0].Id);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    skippedOutOfScope++;
+                    continue;
+                }
+                catch (KeyNotFoundException)
+                {
+                    skippedInvalid++;
+                    errors.Add(new AthleteCountImportRowError(row.RowNumber, "شهرستان معتبر نیست."));
+                    continue;
+                }
+
+                foreach (var (gender, count) in new[]
+                         {
+                             (Gender.Male, menCount),
+                             (Gender.Female, womenCount)
+                         })
+                {
+                    var key = (
+                        FederationId: federationMatches[0].Id,
+                        CityId: cityMatches[0].Id,
+                        Year: year,
+                        Month: month,
+                        Gender: gender);
+                    if (!existingRecords.Add(key))
+                    {
+                        skippedExisting++;
+                        continue;
+                    }
+
+                    addedRecords.Add(new AthleteCount
+                    {
+                        FederationId = key.FederationId,
+                        CityId = cityMatches[0].Id,
+                        Year = year,
+                        Month = month,
+                        Gender = gender,
+                        Count = count
+                    });
+                    created++;
+                }
+            }
+
+            if (addedRecords.Count > 0)
+            {
+                _db.AthleteCounts.AddRange(addedRecords);
+                await _db.SaveChangesAsync();
+            }
+
+            return Ok(new AthleteCountImportResultDto(
+                created, skippedInvalid, skippedOutOfScope, skippedExisting, errors));
+        }
 
         // Scope validation helper
         private bool IsInAllowedScope(string targetScopeLevel, Guid? targetProvinceId, Guid? targetCityId)
