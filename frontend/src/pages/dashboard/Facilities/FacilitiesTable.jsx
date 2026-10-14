@@ -7,7 +7,7 @@ import {
 import { useProvinces, useCities } from '../../../hooks/useLocations';
 
 const { Title } = Typography;
-const FACILITY_TYPE_LABELS = { Msy: 'MSY', Private: 'خصوصی', Gov: 'دولتی' };
+const FACILITY_TYPE_LABELS = { Msy: 'دولتی وزارت ورزش', Private: 'باشگاه خصوصی', Gov: 'دولتی سایر ارگان ها' };
 
 export default function FacilitiesTable({ filters }) {
     const [page, setPage] = useState(1);
@@ -112,9 +112,9 @@ export default function FacilitiesTable({ filters }) {
                 value={facilityType}
                 onChange={setFacilityType}
                 options={[
-                    { value: 'Msy', label: 'MSY' },
-                    { value: 'Private', label: 'خصوصی' },
-                    { value: 'Gov', label: 'دولتی' },
+                    { value: 'Msy', label: 'دولتی وزارت ورزش' },
+                    { value: 'Private', label: 'باشگاه خصوصی' },
+                    { value: 'Gov', label: 'دولتی سایر ارگان ها' },
                 ]}
             />
 
@@ -139,9 +139,9 @@ export default function FacilitiesTable({ filters }) {
                 <Form form={form} layout="vertical" onFinish={handleFinish} disabled={isFetchingEditingFacility}>
                     <Form.Item name="facilityType" label="نوع مکان" rules={[{ required: true }]}>
                         <Select options={[
-                            { value: 'Msy', label: 'MSY' },
-                            { value: 'Private', label: 'خصوصی' },
-                            { value: 'Gov', label: 'دولتی' },
+                            { value: 'Msy', label: 'دولتی وزارت ورزش' },
+                            { value: 'Private', label: 'باشگاه خصوصی' },
+                            { value: 'Gov', label: 'دولتی سایر ارگان ها' },
                         ]} />
                     </Form.Item>
                     <Form.Item name="name" label="نام" rules={[{ required: true }]}>
