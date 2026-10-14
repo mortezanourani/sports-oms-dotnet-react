@@ -5,7 +5,7 @@ import { usePublicFacilityStats } from '../../hooks/usePublicStats';
 import { usePublicProvinces } from '../../hooks/usePublicStats';
 
 const { Title } = Typography;
-const FACILITY_TYPE_LABELS = { Msy: 'MSY', Private: 'خصوصی', Gov: 'دولتی' };
+const FACILITY_TYPE_LABELS = { Msy: 'دولتی وزارت ورزش', Private: 'باشگاه خصوصی', Gov: 'دولتی سایر ارگان ها' };
 
 export default function FacilityStats() {
     const [provinceName, setProvinceName] = useState(undefined);
@@ -50,9 +50,9 @@ export default function FacilityStats() {
             />
 
             <Row gutter={16} style={{ marginBottom: 24 }}>
-                <Col span={8}><Card><Statistic title="اماکن MSY" value={totalsByType.Msy} /></Card></Col>
-                <Col span={8}><Card><Statistic title="اماکن خصوصی" value={totalsByType.Private} /></Card></Col>
-                <Col span={8}><Card><Statistic title="اماکن دولتی" value={totalsByType.Gov} /></Card></Col>
+                <Col span={8}><Card><Statistic title="اماکن دولتی وزارت ورزش" value={totalsByType.Msy} /></Card></Col>
+                <Col span={8}><Card><Statistic title="اماکن باشگاه خصوصی" value={totalsByType.Private} /></Card></Col>
+                <Col span={8}><Card><Statistic title="اماکن دولتی سایر ارگان ها" value={totalsByType.Gov} /></Card></Col>
             </Row>
 
             <Spin spinning={isLoading}>
