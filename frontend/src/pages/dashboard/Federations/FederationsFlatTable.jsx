@@ -41,7 +41,7 @@ export default function FederationsFlatTable({ level, provinceId, cityId }) {
 
     const columns = [
         { title: 'نام', dataIndex: 'displayName' },
-        { title: 'دسته‌بندی', dataIndex: 'category', render: (v) => <Tag>{FEDERATION_CATEGORY_LABELS[v] || v}</Tag> },
+        { title: 'دسته‌بندی', dataIndex: 'category', render: (v) => <Tag>{v ? FEDERATION_CATEGORY_LABELS[v] || v : 'بدون دسته‌بندی'}</Tag> },
         { title: 'فدراسیون والد', dataIndex: 'parentFederationName' },
         {
             title: 'عملیات', key: 'actions',

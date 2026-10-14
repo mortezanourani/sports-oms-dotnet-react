@@ -56,7 +56,7 @@ export default function FederationFormModal({ level, parentFederation, targetPro
     const handleFinish = async (values) => {
         let payload;
         if (level === 'National') {
-            payload = { level: 'National', name: values.name, category: values.category };
+            payload = { level: 'National', name: values.name, category: values.category || null };
         } else if (level === 'Provincial') {
             const parentId = parentFederation ? parentFederation.id : values.parentFederationId;
             payload = { level: 'Provincial', parentFederationId: parentId, provinceId: values.provinceId };
@@ -102,8 +102,14 @@ export default function FederationFormModal({ level, parentFederation, targetPro
                         <Form.Item name="name" label="نام فدراسیون" rules={[{ required: true }]}>
                             <Input />
                         </Form.Item>
-                        <Form.Item name="category" label="دسته‌بندی" rules={[{ required: true }]}>
-                            <Select options={Object.entries(FEDERATION_CATEGORY_LABELS).map(([value, label]) => ({ value, label }))} />
+                        <Form.Item name="category" label="دسته‌بندی">
+                            <Select
+                                allowClear
+                                placeholder="بدون دسته‌بندی"
+                                options={Object.entries(FEDERATION_CATEGORY_LABELS)
+                                    .filter(([value]) => value !== 'Unknow')
+                                    .map(([value, label]) => ({ value, label }))}
+                            />
                         </Form.Item>
                     </>
                 )}
