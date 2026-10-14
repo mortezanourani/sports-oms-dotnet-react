@@ -13,6 +13,14 @@ export function useAthleteCount(id) {
   });
 }
 
+export function useImportAthleteCounts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.importAthleteCounts,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['athleteCounts'] }),
+  });
+}
+
 export function useCreateAthleteCount() {
   const qc = useQueryClient();
   return useMutation({
