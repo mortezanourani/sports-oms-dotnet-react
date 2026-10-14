@@ -178,7 +178,7 @@ namespace Backend.Controllers
             var federations = await qs.OrderBy(f => f.Name ?? f.Province!.Name).ToListAsync();
 
             var result = federations.Select(f => new FederationOutDto(
-                f.Id, ComposeDisplayName(f), f.Category.ToString(), f.Level.ToString(),
+                f.Id, ComposeDisplayName(f), f.Category?.ToString(), f.Level.ToString(),
                 f.ParentFederationId, f.ParentFederation?.Name,
                 f.ProvinceId, f.Province?.Name, f.CityId, f.City?.Name,
                 f.ChildFederations.Any()));
@@ -214,7 +214,7 @@ namespace Backend.Controllers
             }
 
             return Ok(new FederationOutDto(
-                f.Id, ComposeDisplayName(f), f.Category.ToString(), f.Level.ToString(),
+                f.Id, ComposeDisplayName(f), f.Category?.ToString(), f.Level.ToString(),
                 f.ParentFederationId, f.ParentFederation?.Name,
                 f.ProvinceId, f.Province?.Name, f.CityId, f.City?.Name,
                 f.ChildFederations.Any()));
@@ -231,17 +231,23 @@ namespace Backend.Controllers
                 if (!CanManageMastery())
                     return Forbid("فقط کاربران با سطح دسترسی ملی مجاز به ایجاد فurasیون ملی هستند");
 
-                if (string.IsNullOrWhiteSpace(dto.Name) || string.IsNullOrWhiteSpace(dto.Category))
-                    return BadRequest(new { detail = "لطفا نام و دسته‌بندی را کامل وارد کنید" });
-                if (!Enum.TryParse<FederationCategory>(dto.Category, out var categoryEnum))
-                    return BadRequest(new { detail = "دسته‌بندی نامعتبر است" });
+                if (string.IsNullOrWhiteSpace(dto.Name))
+                    return BadRequest(new { detail = "لطفا نام فدراسیون را وارد کنید" });
+                FederationCategory? category = null;
+                if (!string.IsNullOrWhiteSpace(dto.Category))
+                {
+                    if (!Enum.TryParse<FederationCategory>(dto.Category, out var categoryEnum) ||
+                        !Enum.IsDefined(categoryEnum))
+                        return BadRequest(new { detail = "دسته‌بندی نامعتبر است" });
+                    category = categoryEnum;
+                }
                 if (dto.ParentFederationId.HasValue || dto.ProvinceId.HasValue || dto.CityId.HasValue)
                     return BadRequest(new { detail = "فurasیون ملی نباید والد یا موقعیت جغرافیایی داشته باشد" });
 
                 var duplicate = await _db.Federations.AnyAsync(f => f.Level == FederationLevel.National && f.Name == dto.Name);
                 if (duplicate) return Conflict(new { detail = "این نام برای فurasیون ملی قبلا استفاده شده است" });
 
-                var federation = new Federation { Name = dto.Name, Category = categoryEnum, Level = FederationLevel.National };
+                var federation = new Federation { Name = dto.Name, Category = category, Level = FederationLevel.National };
                 _db.Federations.Add(federation);
                 await _db.SaveChangesAsync();
                 return CreatedAtAction(nameof(Get), new { id = federation.Id }, new { id = federation.Id });

@@ -5,7 +5,7 @@
     public record FederationCreateDto(
         string Level,
         string? Name,              // required for National only
-        string? Category,          // required for National only — inherited from parent for Provincial/City
+        string? Category,          // optional for National; inherited from parent for Provincial/City
         Guid? ParentFederationId,  // required for Provincial/City
         Guid? ProvinceId,          // required for Provincial
         Guid? CityId);             // required for City
@@ -13,7 +13,7 @@
     public record FederationUpdateDto(string Name); // National only
 
     public record FederationOutDto(
-        Guid Id, string DisplayName, string Category, string Level,
+        Guid Id, string DisplayName, string? Category, string Level,
         Guid? ParentFederationId, string? ParentFederationName,
         Guid? ProvinceId, string? ProvinceName,
         Guid? CityId, string? CityName,
