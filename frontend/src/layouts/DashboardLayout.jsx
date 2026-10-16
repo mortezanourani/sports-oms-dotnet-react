@@ -1,15 +1,13 @@
-import { useState } from 'react';
 import { Outlet, useNavigate, Link } from 'react-router-dom';
 import { Layout, Menu, Button, Typography, Badge, Space, ConfigProvider } from 'antd';
 import {
-    HomeOutlined, TeamOutlined, TrophyOutlined, BankOutlined,
-    EnvironmentOutlined, MessageOutlined, LogoutOutlined,
+    MessageOutlined, LogoutOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../hooks/useAuth';
 import { logout } from '../api/auth';
 import { useUnreadCount} from '../hooks/useMessages';
 
-const { Header, Sider, Content } = Layout;
+const { Header, Content } = Layout;
 const { Text } = Typography;
 
 // Maps each backend role (matching the C# UserRole enum's exact string
@@ -19,14 +17,14 @@ const { Text } = Typography;
 // the real enforcement always happens server-side regardless of what
 // this object says.
 const ROLE_MENU = {
-    Admin: ['facilities', 'champions', 'federations', 'athletes', 'locations', 'users', 'messages'],
-    Manager: ['facilities', 'champions', 'federations', 'athletes', 'users', 'messages'],
+    Admin: ['privateFacilities', 'msyGovFacilities', 'champions', 'federations', 'athletes', 'locations', 'users', 'messages'],
+    Manager: ['privateFacilities', 'msyGovFacilities', 'champions', 'federations', 'athletes', 'users', 'messages'],
     HumanResourceManager: ['users', 'messages'],
     HumanResourceOfficer: ['users', 'messages'],
-    M88Manager: ['facilities', 'messages'],
-    M88Officer: ['facilities', 'messages'],
-    M5Manager: ['facilities', 'messages'],
-    M5Officer: ['facilities', 'messages'],
+    M88Manager: ['msyGovFacilities', 'messages'],
+    M88Officer: ['msyGovFacilities', 'messages'],
+    M5Manager: ['privateFacilities', 'messages'],
+    M5Officer: ['privateFacilities', 'messages'],
     InsuranceOfficer: ['athletes', 'messages'],
     SportsManager: ['champions', 'federations', 'messages'],
     SportsOfficer: ['champions', 'federations', 'messages'],
@@ -40,13 +38,13 @@ const SCOPE_RESTRICTION = {
 }
 
 export default function DashboardLayout() {
-    const [collapsed, setCollapsed] = useState(false);
     const { role, scopeLevel, fullName } = useAuth();
     const navigate = useNavigate();
 
     const { data: unreadData } = useUnreadCount();
     const ALL_MENU_ITEMS = [
-        { key: 'facilities', label: <Link to="/dashboard/facilities">اماکن ورزشی</Link> },
+        { key: 'privateFacilities', label: <Link to="/dashboard/private-facilities">اماکن خصوصی</Link> },
+        { key: 'msyGovFacilities', label: <Link to="/dashboard/msy-gov-facilities">اماکن MSY و دولتی</Link> },
         { key: 'champions', label: <Link to="/dashboard/champions">مدال‌آوران</Link> },
         { key: 'federations', label: <Link to="/dashboard/federations">فدراسیون‌ها/هیات‌ها</Link> },
         { key: 'athletes', label: <Link to="/dashboard/athletes">ورزشکاران سازمان‌یافته</Link> },

@@ -4,13 +4,13 @@ import FacilitiesTable from './FacilitiesTable';
 
 const { Title } = Typography;
 
-export default function FacilitiesList() {
+export default function FacilitiesList({ facilityTypes, title }) {
     const geo = useGeoSections();
 
     const items = [
         geo.showMastery && {
             key: 'mastery', label: 'کل کشور',
-            children: <FacilitiesTable filters={{}} />,
+            children: <FacilitiesTable filters={{}} facilityTypes={facilityTypes} />,
         },
         geo.showProvinceSection && {
             key: 'province', label: 'استان',
@@ -23,7 +23,7 @@ export default function FacilitiesList() {
                         onChange={geo.setSelectedProvinceId}
                         options={geo.provinceOptions?.map((p) => ({ value: p.id, label: p.name }))}
                     />
-                    <FacilitiesTable filters={{ provinceId: geo.selectedProvinceId }} />
+                    <FacilitiesTable filters={{ provinceId: geo.selectedProvinceId }} facilityTypes={facilityTypes} />
                 </>
             ),
         },
@@ -41,7 +41,7 @@ export default function FacilitiesList() {
                             options={geo.cityOptions?.map((c) => ({ value: c.id, label: c.name }))}
                         />
                     )}
-                    <FacilitiesTable filters={{ cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId }} />
+                    <FacilitiesTable filters={{ cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId }} facilityTypes={facilityTypes} />
                 </>
             ),
         },
@@ -49,7 +49,7 @@ export default function FacilitiesList() {
 
     return (
         <div>
-            <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>اماکن ورزشی</Title>
+            <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>{title}</Title>
             <Tabs items={items} />
         </div>
     );
