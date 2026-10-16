@@ -27,7 +27,12 @@ export default function App() {
 
         <Route element={<ProtectedRoute />}>
           <Route element={<DashboardLayout />}>
-            <Route path="/dashboard/facilities" element={<FacilitiesList />} />
+            <Route element={<ProtectedRoute allowedRoles={['Admin', 'Manager', 'M5Manager', 'M5Officer']} />}>
+              <Route path="/dashboard/private-facilities" element={<FacilitiesList facilityTypes={['Private']} title="اماکن خصوصی" />} />
+            </Route>
+            <Route element={<ProtectedRoute allowedRoles={['Admin', 'Manager', 'M88Manager', 'M88Officer']} />}>
+              <Route path="/dashboard/msy-gov-facilities" element={<FacilitiesList facilityTypes={['Msy', 'Gov']} title="اماکن MSY و دولتی" />} />
+            </Route>
             <Route path="/dashboard/champions" element={<ChampionsList />} />
             <Route path="/dashboard/federations" element={<FederationsList />} />
             <Route path="/dashboard/athletes" element={<AthleteCountsList />} />

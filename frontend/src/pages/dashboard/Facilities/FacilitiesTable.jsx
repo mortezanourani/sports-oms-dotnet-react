@@ -1,23 +1,32 @@
 import { useEffect, useState } from 'react';
-import { Table, Button, Space, Typography, Popconfirm, message, Select, Modal, Form, Input } from 'antd';
+import { Table, Button, Space, Popconfirm, message, Select, Modal, Form, Input } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import {
     useFacilities, useFacility, useCreateFacility, useUpdateFacility, useDeleteFacility,
 } from '../../../hooks/useFacilities';
 import { useProvinces, useCities } from '../../../hooks/useLocations';
+import { useAuth } from '../../../hooks/useAuth';
 
-const { Title } = Typography;
 const FACILITY_TYPE_LABELS = { Msy: 'دولتی وزارت ورزش', Private: 'باشگاه خصوصی', Gov: 'دولتی سایر ارگان ها' };
 
-export default function FacilitiesTable({ filters }) {
+export default function FacilitiesTable({ filters, facilityTypes }) {
     const [page, setPage] = useState(1);
     const [facilityType, setFacilityType] = useState(undefined);
     const [modalOpen, setModalOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
-    const [selectedProvinceId, setSelectedProvinceId] = useState(null);
     const [form] = Form.useForm();
+    const { role } = useAuth();
+    const selectedProvinceId = Form.useWatch('provinceId', form);
+    const defaultFacilityType = facilityTypes.length === 1 ? facilityTypes[0] : undefined;
+    const selectedFacilityType = defaultFacilityType || facilityType;
+    const canDeleteFacility = ['Admin', 'Manager', 'M5Manager', 'M88Manager'].includes(role);
 
-    const { data, isLoading } = useFacilities({ page, pageSize: 20, facilityType, ...filters });
+    const { data, isLoading } = useFacilities({
+        page,
+        pageSize: 20,
+        facilityTypes: selectedFacilityType || facilityTypes.join(','),
+        ...filters,
+    });
     const { data: editingFacility, isFetching: isFetchingEditingFacility } = useFacility(editingId);
     const { data: provinces } = useProvinces();
     const { data: cities } = useCities(selectedProvinceId);
@@ -31,14 +40,13 @@ export default function FacilitiesTable({ filters }) {
     useEffect(() => {
         if (editingId && editingFacility) {
             form.setFieldsValue(editingFacility);
-            setSelectedProvinceId(editingFacility.provinceId);
         }
     }, [editingId, editingFacility, form]);
 
     const openCreateModal = () => {
         setEditingId(null);
-        setSelectedProvinceId(null);
         form.resetFields();
+        if (defaultFacilityType) form.setFieldValue('facilityType', defaultFacilityType);
         setModalOpen(true);
     };
 
@@ -58,10 +66,12 @@ export default function FacilitiesTable({ filters }) {
 
     const handleFinish = async (values) => {
         try {
+            const payload = { ...values };
+            delete payload.provinceId;
             if (editingId) {
-                await updateMutation.mutateAsync({ id: editingId, payload: values });
+                await updateMutation.mutateAsync({ id: editingId, payload });
             } else {
-                await createMutation.mutateAsync(values);
+                await createMutation.mutateAsync(payload);
             }
             message.success('با موفقیت ذخیره شد');
             setModalOpen(false);
@@ -91,9 +101,11 @@ export default function FacilitiesTable({ filters }) {
             render: (_, record) => (
                 <Space>
                     <Button icon={<EditOutlined />} size="small" onClick={() => openEditModal(record)} />
-                    <Popconfirm title="آیا از حذف این مورد مطمئن هستید؟" onConfirm={() => handleDelete(record.id)} okText="بله" cancelText="خیر">
-                        <Button icon={<DeleteOutlined />} size="small" danger />
-                    </Popconfirm>
+                    {canDeleteFacility && (
+                        <Popconfirm title="آیا از حذف این مورد مطمئن هستید؟" onConfirm={() => handleDelete(record.id)} okText="بله" cancelText="خیر">
+                            <Button icon={<DeleteOutlined />} size="small" danger />
+                        </Popconfirm>
+                    )}
                 </Space>
             ),
         },
@@ -105,18 +117,16 @@ export default function FacilitiesTable({ filters }) {
                 <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>افزودن مکان جدید</Button>
             </div>
 
-            <Select
-                placeholder="فیلتر بر اساس نوع"
-                allowClear
-                style={{ width: 200, marginBottom: 16 }}
-                value={facilityType}
-                onChange={setFacilityType}
-                options={[
-                    { value: 'Msy', label: 'دولتی وزارت ورزش' },
-                    { value: 'Private', label: 'باشگاه خصوصی' },
-                    { value: 'Gov', label: 'دولتی سایر ارگان ها' },
-                ]}
-            />
+            {facilityTypes.length > 1 && (
+                <Select
+                    placeholder="فیلتر بر اساس نوع"
+                    allowClear
+                    style={{ width: 200, marginBottom: 16 }}
+                    value={facilityType}
+                    onChange={setFacilityType}
+                    options={facilityTypes.map((type) => ({ value: type, label: FACILITY_TYPE_LABELS[type] }))}
+                />
+            )}
 
             <Table
                 rowKey="id"
@@ -138,22 +148,19 @@ export default function FacilitiesTable({ filters }) {
             >
                 <Form form={form} layout="vertical" onFinish={handleFinish} disabled={isFetchingEditingFacility}>
                     <Form.Item name="facilityType" label="نوع مکان" rules={[{ required: true }]}>
-                        <Select options={[
-                            { value: 'Msy', label: 'دولتی وزارت ورزش' },
-                            { value: 'Private', label: 'باشگاه خصوصی' },
-                            { value: 'Gov', label: 'دولتی سایر ارگان ها' },
-                        ]} />
+                        <Select
+                            options={facilityTypes.map((type) => ({ value: type, label: FACILITY_TYPE_LABELS[type] }))}
+                            disabled={facilityTypes.length === 1}
+                        />
                     </Form.Item>
                     <Form.Item name="name" label="نام" rules={[{ required: true }]}>
                         <Input />
                     </Form.Item>
-                    <Form.Item label="استان">
+                    <Form.Item name="provinceId" label="استان">
                         <Select
                             placeholder="ابتدا استان را انتخاب کنید"
-                            value={selectedProvinceId}
                             options={provinces?.map((p) => ({ value: p.id, label: p.name }))}
-                            onChange={(val) => {
-                                setSelectedProvinceId(val);
+                            onChange={() => {
                                 form.setFieldValue('cityId', undefined);
                             }}
                         />
