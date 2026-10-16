@@ -11,7 +11,7 @@ namespace Backend.Controllers
 {
     [ApiController]
     [Route("api/facilities")]
-    [Authorize]
+    [Authorize(Roles = "Admin,Manager,M88Manager,M88Officer,M5Manager,M5Officer")]
     public class FacilitiesController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -77,11 +77,15 @@ namespace Backend.Controllers
         {
             var role = User.Role();
 
-            if (role is "Admin" or "Manager" or "M5Manager" or "M5Officer")
+            if (role is "Admin" or "Manager")
                 return IsWithinCurrentScope(facility);
 
+            if (role is "M5Manager" or "M5Officer")
+                return facility.FacilityType == FacilityType.Private && IsWithinCurrentScope(facility);
+
             if (role is "M88Manager" or "M88Officer")
-                return facility.FacilityType == FacilityType.Msy && IsWithinCurrentScope(facility);
+                return facility.FacilityType is FacilityType.Msy or FacilityType.Gov &&
+                       IsWithinCurrentScope(facility);
 
             return false;
         }
@@ -96,16 +100,11 @@ namespace Backend.Controllers
                 return true; // Full access
             }
 
-            if (role == "M88Manager" || role == "M88Officer")
-            {
-                return facilityType == FacilityType.Msy;
-            }
+            if (role is "M88Manager" or "M88Officer")
+                return facilityType is FacilityType.Msy or FacilityType.Gov;
 
-            if (role == "M5Manager" || role == "M5Officer")
-            {
-                // Can only write Private and Gov facilities
-                return facilityType is FacilityType.Private or FacilityType.Gov;
-            }
+            if (role is "M5Manager" or "M5Officer")
+                return facilityType == FacilityType.Private;
 
             return false;
         }
@@ -140,7 +139,13 @@ namespace Backend.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> List(string? facilityType, Guid? provinceId, Guid? cityId, int page = 1, int pageSize = 20)
+        public async Task<IActionResult> List(
+            string? facilityType,
+            Guid? provinceId,
+            Guid? cityId,
+            int page = 1,
+            int pageSize = 20,
+            string? facilityTypes = null)
         {
             var qs = _db.Facilities
                 .Include(f => f.City)
@@ -150,11 +155,10 @@ namespace Backend.Controllers
             // Apply role and scope filtering
             var role = User.Role();
 
-            if (role == "M88Manager" || role == "M88Officer")
-            {
-                // M88 users can only see MSY facilities
-                qs = qs.Where(f => f.FacilityType == FacilityType.Msy);
-            }
+            if (role is "M5Manager" or "M5Officer")
+                qs = qs.Where(f => f.FacilityType == FacilityType.Private);
+            else if (role is "M88Manager" or "M88Officer")
+                qs = qs.Where(f => f.FacilityType == FacilityType.Msy || f.FacilityType == FacilityType.Gov);
 
             // Apply scope filtering
             qs = _scope.FilterFacilities(qs, User);
@@ -165,6 +169,20 @@ namespace Backend.Controllers
                     return BadRequest(new { detail = "نوع مکان نامعتبر است" });
 
                 qs = qs.Where(f => f.FacilityType == facilityTypeEnum);
+            }
+
+            if (!string.IsNullOrWhiteSpace(facilityTypes))
+            {
+                var requestedTypes = new List<FacilityType>();
+                foreach (var type in facilityTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    if (!Enum.TryParse<FacilityType>(type, out var parsedType))
+                        return BadRequest(new { detail = "نوع مکان نامعتبر است" });
+
+                    requestedTypes.Add(parsedType);
+                }
+
+                qs = qs.Where(f => requestedTypes.Contains(f.FacilityType));
             }
 
             if (cityId.HasValue) qs = qs.Where(f => f.CityId == cityId.Value);
@@ -208,20 +226,8 @@ namespace Backend.Controllers
             if (!Enum.TryParse<FacilityType>(dto.FacilityType, out var facilityTypeEnum))
                 return BadRequest(new { detail = "نوع مکان نامعتبر است" });
 
-            // Check role-based facility type permissions
-            if (role == "M88Officer" || role == "M88Manager")
-            {
-                if (facilityTypeEnum != FacilityType.Msy)
-                    return Forbid("شما فقط مجاز به ثبت اماکن MSY هستید");
-            }
-
-            if (role == "M5Officer" || role == "M5Manager")
-            {
-                if (facilityTypeEnum is not (FacilityType.Private or FacilityType.Gov))
-                    return Forbid("شما فقط مجاز به ثبت اماکن خصوصی/دولتی هستید");
-            }
-
-            // Admin and Manager can create any type (scope already checked by CheckCityAllowedAsync)
+            if (!CanWriteFacilityType(facilityTypeEnum))
+                return Forbid("شما اجازه ثبت این نوع مکان را ندارید");
 
             var facility = new Facility
             {
