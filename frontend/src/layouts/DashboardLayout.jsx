@@ -43,8 +43,8 @@ export default function DashboardLayout() {
 
     const { data: unreadData } = useUnreadCount();
     const ALL_MENU_ITEMS = [
-        { key: 'privateFacilities', label: <Link to="/dashboard/private-facilities">اماکن خصوصی</Link> },
-        { key: 'msyGovFacilities', label: <Link to="/dashboard/msy-gov-facilities">اماکن MSY و دولتی</Link> },
+        { key: 'msyGovFacilities', label: <Link to="/dashboard/msy-gov-facilities">اماکن ورزشی دولتی</Link> },
+        { key: 'privateFacilities', label: <Link to="/dashboard/private-facilities">باشگاه‌های خصوصی</Link> },
         { key: 'champions', label: <Link to="/dashboard/champions">مدال‌آوران</Link> },
         { key: 'federations', label: <Link to="/dashboard/federations">فدراسیون‌ها/هیات‌ها</Link> },
         { key: 'athletes', label: <Link to="/dashboard/athletes">ورزشکاران سازمان‌یافته</Link> },

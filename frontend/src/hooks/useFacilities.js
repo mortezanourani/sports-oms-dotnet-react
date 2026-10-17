@@ -47,3 +47,11 @@ export function useImportPrivateFacilities() {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['facilities'] }),
     });
 }
+
+export function useImportMsyGovFacilities() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: api.importMsyGovFacilities,
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['facilities'] }),
+    });
+}
