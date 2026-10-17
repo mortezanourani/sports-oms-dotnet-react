@@ -15,7 +15,7 @@
 
     public record FacilityContractDto(
         string? ThirdPartyName, string? ThirdPartyContact, DateTime? StartDate, DateTime? EndDate,
-        string? ContractFilePath);
+        string? ContractFilePath, string? ContractNumber = null);
 
     public record FacilityLicenseDto(
         string? LicenseNumber, string? HolderName, DateTime? IssueDate, DateTime? ExpiryDate,
