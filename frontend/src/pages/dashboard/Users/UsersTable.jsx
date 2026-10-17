@@ -3,19 +3,32 @@ import {
   Table, Button, Space, Popconfirm, message, Modal, Form,
   Input, Select, Tag,
 } from 'antd';
-import { PlusOutlined, EditOutlined, StopOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, StopOutlined, KeyOutlined } from '@ant-design/icons';
 import {
-  useUsers, useUser, useCreateUser, useUpdateUser, useDeactivateUser,
+  useUsers, useUser, useCreateUser, useUpdateUser, useDeactivateUser, useResetUserPassword,
 } from '../../../hooks/useUsers';
 import { useProvinces, useCities } from '../../../hooks/useLocations';
 import { useAuth } from '../../../hooks/useAuth';
 import { ROLE_LABELS, SCOPE_LEVEL_LABELS } from '../../../constants/labels';
 import {useGeoSections} from "../../../hooks/useGeoSections.js";
 
+const ROLE_PRIORITY = {
+  Admin: 4,
+  Manager: 3,
+  HumanResourceManager: 2,
+  HumanResourceOfficer: 1,
+};
+
+const SCOPE_PRIORITY = {
+  Mastery: 2,
+  Province: 1,
+  City: 0,
+};
+
 export default function UsersList({ filters }) {
   const geo = useGeoSections();
 
-  const { role: myRole } = useAuth();
+  const { role: myRole, scopeLevel: myScopeLevel } = useAuth();
   const isAdmin = ['Admin'].includes(myRole);
   const canManage = ['Admin', 'Manager', 'HumanResourceManager', 'HumanResourceOfficer'].includes(myRole);
   // Manager can view this page (matches the backend's [Authorize(Roles =
@@ -25,10 +38,13 @@ export default function UsersList({ filters }) {
   // Manager never sees controls that would just fail with a 403 anyway.
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordUser, setPasswordUser] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [scopeLevel, setScopeLevel] = useState('Mastery');
   const [selectedProvinceId, setSelectedProvinceId] = useState(null);
   const [form] = Form.useForm();
+  const [passwordForm] = Form.useForm();
 
   const { data: users, isLoading } = useUsers(filters);
   const { data: editingUser, isFetching: isFetchingEditing } = useUser(editingId);
@@ -38,6 +54,7 @@ export default function UsersList({ filters }) {
   const createMutation = useCreateUser();
   const updateMutation = useUpdateUser();
   const deactivateMutation = useDeactivateUser();
+  const resetPasswordMutation = useResetUserPassword();
 
   const isEdit = Boolean(editingId);
 
@@ -96,6 +113,31 @@ export default function UsersList({ filters }) {
     }
   };
 
+  const openPasswordModal = (user) => {
+    setPasswordUser(user);
+    passwordForm.resetFields();
+    setPasswordModalOpen(true);
+  };
+
+  const handlePasswordReset = async (values) => {
+    try {
+      await resetPasswordMutation.mutateAsync({
+        id: passwordUser.id,
+        newPassword: values.newPassword,
+      });
+      message.success('رمز عبور کاربر با موفقیت تغییر کرد');
+      setPasswordModalOpen(false);
+      setPasswordUser(null);
+      passwordForm.resetFields();
+    } catch (err) {
+      message.error(err.response?.data?.detail || 'تغییر رمز عبور کاربر با خطا مواجه شد');
+    }
+  };
+
+  const hasHigherPriority = (user) =>
+    (ROLE_PRIORITY[myRole] ?? 0) > (ROLE_PRIORITY[user.role] ?? 0) ||
+    (SCOPE_PRIORITY[myScopeLevel] ?? 0) > (SCOPE_PRIORITY[user.scopeLevel] ?? 0);
+
   const columns = [
     { title: 'نام کاربری', dataIndex: 'username' },
     { title: 'نام', dataIndex: 'firstName' },
@@ -110,6 +152,14 @@ export default function UsersList({ filters }) {
         <Space>
           {canManage && (
             <>
+              {hasHigherPriority(record) && (
+                <Button
+                  icon={<KeyOutlined />}
+                  size="small"
+                  title="تغییر رمز عبور"
+                  onClick={() => openPasswordModal(record)}
+                />
+              )}
               <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(record)} />
               <Popconfirm title="این کاربر غیرفعال شود؟" onConfirm={() => handleDeactivate(record.id)} okText="بله" cancelText="خیر">
                 <Button icon={<StopOutlined />} size="small" danger />
@@ -204,6 +254,50 @@ export default function UsersList({ filters }) {
               <Select disabled={!selectedProvinceId} options={cities?.map((c) => ({ value: c.id, label: c.name }))} />
             </Form.Item>
           )}
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`تغییر رمز عبور کاربر ${passwordUser?.username || ''}`}
+        open={passwordModalOpen}
+        onCancel={() => {
+          if (resetPasswordMutation.isPending) return;
+          setPasswordModalOpen(false);
+          setPasswordUser(null);
+          passwordForm.resetFields();
+        }}
+        onOk={() => passwordForm.submit()}
+        confirmLoading={resetPasswordMutation.isPending}
+        okText="ذخیره"
+        cancelText="انصراف"
+        destroyOnClose
+      >
+        <Form form={passwordForm} layout="vertical" onFinish={handlePasswordReset}>
+          <Form.Item
+            name="newPassword"
+            label="رمز عبور جدید"
+            rules={[{ required: true, min: 6, message: 'رمز عبور باید حداقل ۶ نویسه باشد' }]}
+          >
+            <Input.Password autoComplete="new-password" />
+          </Form.Item>
+          <Form.Item
+            name="confirmPassword"
+            label="تکرار رمز عبور جدید"
+            dependencies={['newPassword']}
+            rules={[
+              { required: true, message: 'تکرار رمز عبور جدید الزامی است' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('newPassword') === value) {
+                    return Promise.resolve();
+                  }
+                  return Promise.reject(new Error('رمزهای عبور جدید یکسان نیستند'));
+                },
+              }),
+            ]}
+          >
+            <Input.Password autoComplete="new-password" />
+          </Form.Item>
         </Form>
       </Modal>
     </div>

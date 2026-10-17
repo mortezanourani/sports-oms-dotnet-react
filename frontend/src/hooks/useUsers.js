@@ -56,6 +56,10 @@ export function useDeactivateUser() {
   });
 }
 
+export function useResetUserPassword() {
+  return useMutation({ mutationFn: api.resetUserPassword });
+}
+
 export function useAssignFederationPosition() {
   const qc = useQueryClient();
   return useMutation({
