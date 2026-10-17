@@ -30,6 +30,8 @@ namespace Backend.Controllers
         private bool IsM5Manager() => User.Role() == "M5Manager";
         private bool IsM5Officer() => User.Role() == "M5Officer";
 
+        private const string PrivateFacilityImportRoles = "Admin,Manager,M5Manager,M5Officer";
+
         private bool HasFacilityDeletePermission() => IsAdminOrManager() || IsM5Manager() || IsM88Manager();
         private bool HasContractDeletePermission() => IsAdminOrManager() || IsM88Manager();
         private bool HasLicenseDeletePermission() => IsAdminOrManager() || IsM5Manager();
@@ -107,6 +109,213 @@ namespace Backend.Controllers
                 return facilityType == FacilityType.Private;
 
             return false;
+        }
+
+        private bool CanImportPrivateFacilityAtScope(Guid provinceId, Guid cityId)
+        {
+            var scopeLevel = User.ScopeLevel();
+            if (scopeLevel == "Mastery")
+                return true;
+            if (scopeLevel == "Province")
+                return User.ScopeProvinceId() == provinceId;
+            if (scopeLevel == "City")
+                return User.ScopeCityId() == cityId;
+            return false;
+        }
+
+        [HttpGet("import/template")]
+        [Authorize(Roles = PrivateFacilityImportRoles)]
+        public IActionResult DownloadPrivateFacilityImportTemplate()
+        {
+            return File(
+                PrivateFacilityImportWorkbook.CreateTemplate(),
+                PrivateFacilityImportWorkbook.ContentType,
+                "private-facilities-import-template.xlsx");
+        }
+
+        [HttpPost("import")]
+        [Authorize(Roles = PrivateFacilityImportRoles)]
+        [RequestSizeLimit(10_000_000)]
+        public async Task<IActionResult> ImportPrivateFacilities([FromForm] IFormFile? file)
+        {
+            if (User.Role() is not ("Admin" or "Manager" or "M5Manager" or "M5Officer"))
+                return Forbid("شما اجازه وارد کردن اماکن خصوصی را ندارید");
+            if (file == null || file.Length == 0)
+                return BadRequest(new { detail = "لطفا فایل اکسل را انتخاب کنید" });
+            if (!string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { detail = "فرمت فایل باید Excel (.xlsx) باشد" });
+
+            IReadOnlyList<PrivateFacilityImportRow> rows;
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                rows = PrivateFacilityImportWorkbook.Read(stream);
+            }
+            catch (InvalidDataException ex)
+            {
+                return BadRequest(new { detail = ex.Message });
+            }
+            catch (Exception ex) when (ex is IOException or ClosedXML.Excel.Exceptions.ClosedXMLException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست یا قابل خواندن نیست" });
+            }
+
+            var provinces = await _db.Provinces.ToListAsync();
+            var cities = await _db.Cities.ToListAsync();
+            var facilities = await _scope.FilterFacilities(_db.Facilities
+                    .Include(facility => facility.Licenses)
+                    .Where(facility => facility.FacilityType == FacilityType.Private), User)
+                .ToListAsync();
+
+            var createdFacilities = 0;
+            var existingFacilities = 0;
+            var createdLicenses = 0;
+            var skippedExistingLicenses = 0;
+            var skippedInvalidFacilities = 0;
+            var skippedInvalidLicenses = 0;
+            var skippedOutOfScope = 0;
+            var errors = new List<PrivateFacilityImportRowError>();
+
+            foreach (var row in rows)
+            {
+                if (string.IsNullOrWhiteSpace(row.Name) ||
+                    string.IsNullOrWhiteSpace(row.Address) ||
+                    string.IsNullOrWhiteSpace(row.ProvinceName) ||
+                    string.IsNullOrWhiteSpace(row.CityName))
+                {
+                    skippedInvalidFacilities++;
+                    errors.Add(new PrivateFacilityImportRowError(
+                        row.RowNumber, "استان، شهر، نام مکان و آدرس الزامی هستند."));
+                    continue;
+                }
+
+                var normalizedProvinceName = PrivateFacilityImportWorkbook.NormalizeName(row.ProvinceName);
+                var matchingProvinces = provinces.Where(province =>
+                    PrivateFacilityImportWorkbook.NormalizeName(province.Name) == normalizedProvinceName).ToList();
+                if (matchingProvinces.Count != 1)
+                {
+                    skippedInvalidFacilities++;
+                    errors.Add(new PrivateFacilityImportRowError(row.RowNumber, "نام استان معتبر یا یکتا نیست."));
+                    continue;
+                }
+
+                var province = matchingProvinces[0];
+                var normalizedCityName = PrivateFacilityImportWorkbook.NormalizeName(row.CityName);
+                var matchingCities = cities.Where(city =>
+                    city.ProvinceId == province.Id &&
+                    PrivateFacilityImportWorkbook.NormalizeName(city.Name) == normalizedCityName).ToList();
+                if (matchingCities.Count != 1)
+                {
+                    skippedInvalidFacilities++;
+                    errors.Add(new PrivateFacilityImportRowError(
+                        row.RowNumber, "نام شهر معتبر نیست یا با استان مطابقت ندارد."));
+                    continue;
+                }
+
+                var city = matchingCities[0];
+                if (!CanImportPrivateFacilityAtScope(province.Id, city.Id))
+                {
+                    skippedOutOfScope++;
+                    continue;
+                }
+
+                var normalizedFacilityName = PrivateFacilityImportWorkbook.NormalizeName(row.Name);
+                var facility = facilities.FirstOrDefault(existing =>
+                    existing.CityId == city.Id &&
+                    PrivateFacilityImportWorkbook.NormalizeName(existing.Name) == normalizedFacilityName);
+                var facilityAlreadyExists = facility != null;
+
+                if (facility == null)
+                {
+                    facility = new Facility
+                    {
+                        FacilityType = FacilityType.Private,
+                        Name = row.Name.Trim(),
+                        Address = row.Address.Trim(),
+                        SportType = row.SportType?.Trim() ?? string.Empty,
+                        OwnerName = row.OwnerName?.Trim(),
+                        OwnerContact = row.OwnerContact?.Trim(),
+                        CityId = city.Id
+                    };
+                    _db.Facilities.Add(facility);
+                    facilities.Add(facility);
+                    createdFacilities++;
+                }
+                else
+                {
+                    existingFacilities++;
+                }
+
+                var hasLicenseData = row.LicenseNumber != null ||
+                                     row.LicenseHolderName != null ||
+                                     row.LicenseIssueDate != null ||
+                                     row.LicenseExpiryDate != null;
+                if (!hasLicenseData)
+                {
+                    if (!facilityAlreadyExists)
+                        await _db.SaveChangesAsync();
+                    continue;
+                }
+
+                var issueDate = default(DateOnly);
+                var licenseIsValid =
+                    !string.IsNullOrWhiteSpace(row.LicenseNumber) &&
+                    !string.IsNullOrWhiteSpace(row.LicenseHolderName) &&
+                    PrivateFacilityImportWorkbook.TryParseSolarDate(row.LicenseIssueDate, out issueDate);
+                DateOnly? expiryDate = null;
+                if (licenseIsValid && row.LicenseExpiryDate != null)
+                {
+                    if (!PrivateFacilityImportWorkbook.TryParseSolarDate(row.LicenseExpiryDate, out var parsedExpiryDate) ||
+                        parsedExpiryDate < issueDate)
+                    {
+                        licenseIsValid = false;
+                    }
+                    else
+                    {
+                        expiryDate = parsedExpiryDate;
+                    }
+                }
+
+                if (!licenseIsValid)
+                {
+                    skippedInvalidLicenses++;
+                    errors.Add(new PrivateFacilityImportRowError(
+                        row.RowNumber, "اطلاعات مجوز معتبر نیست؛ مکان ثبت شد اما مجوز ثبت نشد."));
+                    if (!facilityAlreadyExists)
+                        await _db.SaveChangesAsync();
+                    continue;
+                }
+
+                var normalizedLicenseNumber = PrivateFacilityImportWorkbook.NormalizeName(row.LicenseNumber!);
+                if (facility.Licenses.Any(license =>
+                        PrivateFacilityImportWorkbook.NormalizeName(license.LicenseNumber) == normalizedLicenseNumber))
+                {
+                    skippedExistingLicenses++;
+                    if (!facilityAlreadyExists)
+                        await _db.SaveChangesAsync();
+                    continue;
+                }
+
+                facility.Licenses.Add(new FacilityLicense
+                {
+                    LicenseNumber = row.LicenseNumber!.Trim(),
+                    HolderName = row.LicenseHolderName!.Trim(),
+                    IssueDate = issueDate,
+                    ExpiryDate = expiryDate
+                });
+                await _db.SaveChangesAsync();
+                createdLicenses++;
+            }
+
+            return Ok(new PrivateFacilityImportResultDto(
+                createdFacilities,
+                existingFacilities,
+                createdLicenses,
+                skippedExistingLicenses,
+                skippedInvalidFacilities,
+                skippedInvalidLicenses,
+                skippedOutOfScope,
+                errors));
         }
 
         // Helper to check if user can access contracts for a facility
