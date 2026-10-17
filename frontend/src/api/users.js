@@ -13,6 +13,8 @@ export const downloadUsersImportTemplate = async () =>
   (await api.get('/users/import/template', { responseType: 'blob' })).data;
 export const updateUser = async ({ id, payload }) => (await api.put(`/users/${id}`, payload)).data;
 export const deactivateUser = async (id) => { await api.delete(`/users/${id}`); };
+export const resetUserPassword = async ({ id, newPassword }) =>
+  (await api.post(`/users/${id}/password`, { newPassword })).data;
 export const assignFederationPosition = async ({ userId, payload }) =>
   (await api.post(`/users/${userId}/federation-position`, payload)).data;
 export const getUserFederationPositions = async (userId) =>
