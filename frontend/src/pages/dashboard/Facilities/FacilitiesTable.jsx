@@ -9,7 +9,9 @@ import { useAuth } from '../../../hooks/useAuth';
 
 const FACILITY_TYPE_LABELS = { Msy: 'دولتی وزارت ورزش', Private: 'باشگاه خصوصی', Gov: 'دولتی سایر ارگان ها' };
 
-export default function FacilitiesTable({ filters, facilityTypes, page, onPageChange, renderLocationFilters }) {
+export default function FacilitiesTable({
+    filters, facilityTypes, page, onPageChange, renderLocationFilters, renderActions,
+}) {
     const [facilityType, setFacilityType] = useState(undefined);
     const [modalOpen, setModalOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
@@ -128,7 +130,10 @@ export default function FacilitiesTable({ filters, facilityTypes, page, onPageCh
         <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
                 <div>{renderLocationFilters?.(facilityTypeFilter) || facilityTypeFilter}</div>
-                <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>افزودن مکان جدید</Button>
+                <Space>
+                    {renderActions}
+                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>افزودن مکان جدید</Button>
+                </Space>
             </div>
 
             <Table
