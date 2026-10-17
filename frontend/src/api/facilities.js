@@ -32,3 +32,12 @@ export const importPrivateFacilities = async (file) => {
 
 export const downloadPrivateFacilitiesImportTemplate = async () =>
     (await api.get('/facilities/import/template', { responseType: 'blob' })).data;
+
+export const importMsyGovFacilities = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return (await api.post('/facilities/msy-gov/import', formData)).data;
+};
+
+export const downloadMsyGovFacilitiesImportTemplate = async () =>
+    (await api.get('/facilities/msy-gov/import/template', { responseType: 'blob' })).data;
