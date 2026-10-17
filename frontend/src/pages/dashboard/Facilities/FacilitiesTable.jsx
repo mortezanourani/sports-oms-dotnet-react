@@ -9,8 +9,7 @@ import { useAuth } from '../../../hooks/useAuth';
 
 const FACILITY_TYPE_LABELS = { Msy: 'دولتی وزارت ورزش', Private: 'باشگاه خصوصی', Gov: 'دولتی سایر ارگان ها' };
 
-export default function FacilitiesTable({ filters, facilityTypes }) {
-    const [page, setPage] = useState(1);
+export default function FacilitiesTable({ filters, facilityTypes, page, onPageChange, renderLocationFilters }) {
     const [facilityType, setFacilityType] = useState(undefined);
     const [modalOpen, setModalOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
@@ -23,7 +22,7 @@ export default function FacilitiesTable({ filters, facilityTypes }) {
 
     const { data, isLoading } = useFacilities({
         page,
-        pageSize: 20,
+        pageSize: 10,
         facilityTypes: selectedFacilityType || facilityTypes.join(','),
         ...filters,
     });
@@ -111,29 +110,33 @@ export default function FacilitiesTable({ filters, facilityTypes }) {
         },
     ];
 
+    const facilityTypeFilter = facilityTypes.length > 1 && (
+        <Select
+            placeholder="فیلتر بر اساس نوع"
+            allowClear
+            style={{ width: 200 }}
+            value={facilityType}
+            onChange={(value) => {
+                setFacilityType(value);
+                onPageChange(1);
+            }}
+            options={facilityTypes.map((type) => ({ value: type, label: FACILITY_TYPE_LABELS[type] }))}
+        />
+    );
+
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
+                <div>{renderLocationFilters?.(facilityTypeFilter) || facilityTypeFilter}</div>
                 <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>افزودن مکان جدید</Button>
             </div>
-
-            {facilityTypes.length > 1 && (
-                <Select
-                    placeholder="فیلتر بر اساس نوع"
-                    allowClear
-                    style={{ width: 200, marginBottom: 16 }}
-                    value={facilityType}
-                    onChange={setFacilityType}
-                    options={facilityTypes.map((type) => ({ value: type, label: FACILITY_TYPE_LABELS[type] }))}
-                />
-            )}
 
             <Table
                 rowKey="id"
                 columns={columns}
                 dataSource={data?.items}
                 loading={isLoading}
-                pagination={{ current: page, pageSize: 20, total: data?.count, onChange: setPage }}
+                pagination={{ current: page, pageSize: 10, total: data?.count, onChange: onPageChange }}
             />
 
             <Modal
