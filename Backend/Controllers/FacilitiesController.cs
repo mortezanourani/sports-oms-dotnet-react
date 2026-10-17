@@ -31,6 +31,7 @@ namespace Backend.Controllers
         private bool IsM5Officer() => User.Role() == "M5Officer";
 
         private const string PrivateFacilityImportRoles = "Admin,Manager,M5Manager,M5Officer";
+        private const string MsyGovFacilityImportRoles = "Admin,Manager,M88Manager,M88Officer";
 
         private bool HasFacilityDeletePermission() => IsAdminOrManager() || IsM5Manager() || IsM88Manager();
         private bool HasContractDeletePermission() => IsAdminOrManager() || IsM88Manager();
@@ -111,7 +112,7 @@ namespace Backend.Controllers
             return false;
         }
 
-        private bool CanImportPrivateFacilityAtScope(Guid provinceId, Guid cityId)
+        private bool CanImportFacilityAtScope(Guid provinceId, Guid cityId)
         {
             var scopeLevel = User.ScopeLevel();
             if (scopeLevel == "Mastery")
@@ -213,7 +214,7 @@ namespace Backend.Controllers
                 }
 
                 var city = matchingCities[0];
-                if (!CanImportPrivateFacilityAtScope(province.Id, city.Id))
+                if (!CanImportFacilityAtScope(province.Id, city.Id))
                 {
                     skippedOutOfScope++;
                     continue;
@@ -314,6 +315,217 @@ namespace Backend.Controllers
                 skippedExistingLicenses,
                 skippedInvalidFacilities,
                 skippedInvalidLicenses,
+                skippedOutOfScope,
+                errors));
+        }
+
+        [HttpGet("msy-gov/import/template")]
+        [Authorize(Roles = MsyGovFacilityImportRoles)]
+        public IActionResult DownloadMsyGovFacilityImportTemplate()
+        {
+            return File(
+                MsyGovFacilityImportWorkbook.CreateTemplate(),
+                MsyGovFacilityImportWorkbook.ContentType,
+                "msy-gov-facilities-import-template.xlsx");
+        }
+
+        [HttpPost("msy-gov/import")]
+        [Authorize(Roles = MsyGovFacilityImportRoles)]
+        [RequestSizeLimit(10_000_000)]
+        public async Task<IActionResult> ImportMsyGovFacilities([FromForm] IFormFile? file)
+        {
+            if (User.Role() is not ("Admin" or "Manager" or "M88Manager" or "M88Officer"))
+                return Forbid("شما اجازه وارد کردن اماکن MSY و دولتی را ندارید");
+            if (file == null || file.Length == 0)
+                return BadRequest(new { detail = "لطفا فایل اکسل را انتخاب کنید" });
+            if (!string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { detail = "فرمت فایل باید Excel (.xlsx) باشد" });
+
+            IReadOnlyList<MsyGovFacilityImportRow> rows;
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                rows = MsyGovFacilityImportWorkbook.Read(stream);
+            }
+            catch (InvalidDataException ex)
+            {
+                return BadRequest(new { detail = ex.Message });
+            }
+            catch (Exception ex) when (ex is IOException or ClosedXML.Excel.Exceptions.ClosedXMLException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست یا قابل خواندن نیست" });
+            }
+
+            var provinces = await _db.Provinces.ToListAsync();
+            var cities = await _db.Cities.ToListAsync();
+            var facilities = await _scope.FilterFacilities(_db.Facilities
+                    .Include(facility => facility.Contracts)
+                    .Where(facility => facility.FacilityType == FacilityType.Msy ||
+                                       facility.FacilityType == FacilityType.Gov), User)
+                .ToListAsync();
+            var createdFacilities = 0;
+            var existingFacilities = 0;
+            var createdContracts = 0;
+            var skippedExistingContracts = 0;
+            var skippedInvalid = 0;
+            var skippedInvalidContracts = 0;
+            var skippedOutOfScope = 0;
+            var errors = new List<MsyGovFacilityImportRowError>();
+
+            foreach (var row in rows)
+            {
+                if (string.IsNullOrWhiteSpace(row.ProvinceName) ||
+                    string.IsNullOrWhiteSpace(row.CityName) ||
+                    string.IsNullOrWhiteSpace(row.Name) ||
+                    string.IsNullOrWhiteSpace(row.Address) ||
+                    !Enum.TryParse<FacilityType>(row.FacilityType, ignoreCase: true, out var facilityType) ||
+                    facilityType is not (FacilityType.Msy or FacilityType.Gov))
+                {
+                    skippedInvalid++;
+                    errors.Add(new MsyGovFacilityImportRowError(
+                        row.RowNumber, "استان، شهر، نوع مکان، نام مکان و آدرس الزامی یا نامعتبر هستند."));
+                    continue;
+                }
+
+                var normalizedProvinceName = PrivateFacilityImportWorkbook.NormalizeName(row.ProvinceName);
+                var matchingProvinces = provinces.Where(province =>
+                    PrivateFacilityImportWorkbook.NormalizeName(province.Name) == normalizedProvinceName).ToList();
+                if (matchingProvinces.Count != 1)
+                {
+                    skippedInvalid++;
+                    errors.Add(new MsyGovFacilityImportRowError(row.RowNumber, "نام استان معتبر یا یکتا نیست."));
+                    continue;
+                }
+
+                var province = matchingProvinces[0];
+                var normalizedCityName = PrivateFacilityImportWorkbook.NormalizeName(row.CityName);
+                var matchingCities = cities.Where(city =>
+                    city.ProvinceId == province.Id &&
+                    PrivateFacilityImportWorkbook.NormalizeName(city.Name) == normalizedCityName).ToList();
+                if (matchingCities.Count != 1)
+                {
+                    skippedInvalid++;
+                    errors.Add(new MsyGovFacilityImportRowError(
+                        row.RowNumber, "نام شهر معتبر نیست یا با استان مطابقت ندارد."));
+                    continue;
+                }
+
+                var city = matchingCities[0];
+                if (!CanImportFacilityAtScope(province.Id, city.Id))
+                {
+                    skippedOutOfScope++;
+                    continue;
+                }
+
+                var normalizedFacilityName = PrivateFacilityImportWorkbook.NormalizeName(row.Name);
+                var existingFacility = facilities.FirstOrDefault(facility =>
+                    facility.FacilityType == facilityType &&
+                    facility.CityId == city.Id &&
+                    PrivateFacilityImportWorkbook.NormalizeName(facility.Name) == normalizedFacilityName);
+                if (existingFacility != null)
+                {
+                    existingFacilities++;
+                }
+                else
+                {
+                    existingFacility = new Facility
+                    {
+                        FacilityType = facilityType,
+                        Name = row.Name.Trim(),
+                        Address = row.Address.Trim(),
+                        SportType = row.SportType?.Trim() ?? string.Empty,
+                        OwnerName = row.OwnerName?.Trim(),
+                        OwnerContact = row.OwnerContact?.Trim(),
+                        CityId = city.Id
+                    };
+                    _db.Facilities.Add(existingFacility);
+                    facilities.Add(existingFacility);
+                    await _db.SaveChangesAsync();
+                    createdFacilities++;
+                }
+
+                var hasContractData = row.ContractThirdPartyName != null ||
+                                      row.ContractThirdPartyContact != null ||
+                                      row.ContractNumber != null ||
+                                      row.ContractStartDate != null ||
+                                      row.ContractEndDate != null;
+                if (!hasContractData)
+                    continue;
+
+                var contractIsValid = PrivateFacilityImportWorkbook.TryParseSolarDate(
+                    row.ContractStartDate, out var startDate);
+                DateOnly? endDate = null;
+                if (contractIsValid && row.ContractEndDate != null)
+                {
+                    if (!PrivateFacilityImportWorkbook.TryParseSolarDate(row.ContractEndDate, out var parsedEndDate) ||
+                        parsedEndDate < startDate)
+                    {
+                        contractIsValid = false;
+                    }
+                    else
+                    {
+                        endDate = parsedEndDate;
+                    }
+                }
+
+                if (User.Role() == "M88Officer" && facilityType != FacilityType.Msy)
+                {
+                    skippedInvalidContracts++;
+                    errors.Add(new MsyGovFacilityImportRowError(
+                        row.RowNumber, "این نقش فقط مجاز به ثبت قرارداد برای اماکن MSY است؛ مکان ثبت شد اما قرارداد ثبت نشد."));
+                    continue;
+                }
+
+                if (!contractIsValid)
+                {
+                    skippedInvalidContracts++;
+                    errors.Add(new MsyGovFacilityImportRowError(
+                        row.RowNumber, "اطلاعات قرارداد معتبر نیست؛ مکان ثبت شد اما قرارداد ثبت نشد."));
+                    continue;
+                }
+
+                var normalizedThirdPartyName = PrivateFacilityImportWorkbook.NormalizeName(
+                    row.ContractThirdPartyName ?? string.Empty);
+                var normalizedThirdPartyContact = PrivateFacilityImportWorkbook.NormalizeName(
+                    row.ContractThirdPartyContact ?? string.Empty);
+                var normalizedContractNumber = PrivateFacilityImportWorkbook.NormalizeName(
+                    row.ContractNumber ?? string.Empty);
+                if (existingFacility.Contracts.Any(contract =>
+                        PrivateFacilityImportWorkbook.NormalizeName(contract.ContractNumber ?? string.Empty) ==
+                            normalizedContractNumber &&
+                        PrivateFacilityImportWorkbook.NormalizeName(contract.ThirdPartyName) ==
+                            normalizedThirdPartyName &&
+                        PrivateFacilityImportWorkbook.NormalizeName(contract.ThirdPartyContact ?? string.Empty) ==
+                            normalizedThirdPartyContact &&
+                        contract.StartDate == startDate &&
+                        contract.EndDate == endDate))
+                {
+                    skippedExistingContracts++;
+                    continue;
+                }
+
+                var newContract = new FacilityContract
+                {
+                    FacilityId = existingFacility.Id,
+                    ContractNumber = row.ContractNumber?.Trim(),
+                    ThirdPartyName = row.ContractThirdPartyName?.Trim() ?? string.Empty,
+                    ThirdPartyContact = row.ContractThirdPartyContact?.Trim(),
+                    StartDate = startDate,
+                    EndDate = endDate
+                };
+                _db.FacilityContracts.Add(newContract);
+                existingFacility.Contracts.Add(newContract);
+                await _db.SaveChangesAsync();
+                createdContracts++;
+            }
+
+            return Ok(new MsyGovFacilityImportResultDto(
+                createdFacilities,
+                existingFacilities,
+                createdContracts,
+                skippedExistingContracts,
+                skippedInvalid,
+                skippedInvalidContracts,
                 skippedOutOfScope,
                 errors));
         }
@@ -525,6 +737,7 @@ namespace Backend.Controllers
                 .Select(c => new
                 {
                     c.Id,
+                    c.ContractNumber,
                     c.ThirdPartyName,
                     c.ThirdPartyContact,
                     c.StartDate,
@@ -557,6 +770,7 @@ namespace Backend.Controllers
             return Ok(new
             {
                 contract.Id,
+                contract.ContractNumber,
                 contract.ThirdPartyName,
                 contract.ThirdPartyContact,
                 contract.StartDate,
@@ -587,6 +801,7 @@ namespace Backend.Controllers
             var contract = new FacilityContract
             {
                 FacilityId = facilityId,
+                ContractNumber = dto.ContractNumber?.Trim(),
                 ThirdPartyName = dto.ThirdPartyName ?? string.Empty,
                 ThirdPartyContact = dto.ThirdPartyContact,
                 StartDate = DateOnly.FromDateTime(dto.StartDate.Value),
@@ -624,6 +839,7 @@ namespace Backend.Controllers
             if (!dto.StartDate.HasValue)
                 return BadRequest(new { detail = "تاریخ شروع قرارداد الزامی است" });
 
+            contract.ContractNumber = dto.ContractNumber?.Trim();
             contract.ThirdPartyName = dto.ThirdPartyName ?? string.Empty;
             contract.ThirdPartyContact = dto.ThirdPartyContact;
             contract.StartDate = DateOnly.FromDateTime(dto.StartDate.Value);

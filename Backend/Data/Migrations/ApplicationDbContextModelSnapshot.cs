@@ -334,6 +334,10 @@ namespace Backend.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("contract_file_path");
 
+                    b.Property<string>("ContractNumber")
+                        .HasColumnType("text")
+                        .HasColumnName("contract_number");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
