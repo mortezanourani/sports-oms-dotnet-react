@@ -1,4 +1,5 @@
-import { Tabs, Select, Typography } from 'antd';
+import { useState } from 'react';
+import { Select, Space, Typography } from 'antd';
 import { useGeoSections } from '../../../hooks/useGeoSections';
 import FacilitiesTable from './FacilitiesTable';
 
@@ -6,51 +7,59 @@ const { Title } = Typography;
 
 export default function FacilitiesList({ facilityTypes, title }) {
     const geo = useGeoSections();
+    const [page, setPage] = useState(1);
 
-    const items = [
-        geo.showMastery && {
-            key: 'mastery', label: 'کل کشور',
-            children: <FacilitiesTable filters={{}} facilityTypes={facilityTypes} />,
-        },
-        geo.showProvinceSection && {
-            key: 'province', label: 'استان',
-            children: (
-                <>
-                    <Select
-                        placeholder="انتخاب استان" style={{ width: 220, marginBottom: 16 }}
-                        disabled={geo.provinceLocked}
-                        value={geo.selectedProvinceId}
-                        onChange={geo.setSelectedProvinceId}
-                        options={geo.provinceOptions?.map((p) => ({ value: p.id, label: p.name }))}
-                    />
-                    <FacilitiesTable filters={{ provinceId: geo.selectedProvinceId }} facilityTypes={facilityTypes} />
-                </>
-            ),
-        },
-        {
-            key: 'city', label: 'شهر',
-            children: (
-                <>
-                    {!geo.cityLocked && (
-                        <Select
-                            placeholder="ابتدا استان را در بخش «استان» انتخاب کنید"
-                            style={{ width: 220, marginBottom: 16 }}
-                            disabled={!geo.selectedProvinceId}
-                            value={geo.selectedCityId}
-                            onChange={geo.setSelectedCityId}
-                            options={geo.cityOptions?.map((c) => ({ value: c.id, label: c.name }))}
-                        />
-                    )}
-                    <FacilitiesTable filters={{ cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId }} facilityTypes={facilityTypes} />
-                </>
-            ),
-        },
-    ].filter(Boolean);
+    const handleProvinceChange = (provinceId) => {
+        geo.setSelectedProvinceId(provinceId);
+        geo.setSelectedCityId(null);
+        setPage(1);
+    };
+
+    const handleCityChange = (cityId) => {
+        geo.setSelectedCityId(cityId);
+        setPage(1);
+    };
 
     return (
         <div>
             <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>{title}</Title>
-            <Tabs items={items} />
+            <FacilitiesTable
+                filters={{
+                    provinceId: geo.selectedProvinceId,
+                    cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId,
+                }}
+                facilityTypes={facilityTypes}
+                page={page}
+                onPageChange={setPage}
+                renderLocationFilters={(facilityTypeFilter) => (
+                    <Space wrap>
+                        {geo.auth.scopeLevel !== 'City' && (
+                            <>
+                                {geo.auth.scopeLevel === 'Mastery' && (
+                                    <Select
+                                        placeholder="فیلتر بر اساس استان"
+                                        allowClear
+                                        style={{ width: 220 }}
+                                        value={geo.selectedProvinceId}
+                                        onChange={handleProvinceChange}
+                                        options={geo.provinceOptions?.map((p) => ({ value: p.id, label: p.name }))}
+                                    />
+                                )}
+                                <Select
+                                    placeholder={geo.selectedProvinceId ? 'فیلتر بر اساس شهر' : 'ابتدا استان را انتخاب کنید'}
+                                    allowClear
+                                    style={{ width: 220 }}
+                                    disabled={!geo.selectedProvinceId}
+                                    value={geo.selectedCityId}
+                                    onChange={handleCityChange}
+                                    options={geo.cityOptions?.map((c) => ({ value: c.id, label: c.name }))}
+                                />
+                            </>
+                        )}
+                        {facilityTypeFilter}
+                    </Space>
+                )}
+            />
         </div>
     );
 }
