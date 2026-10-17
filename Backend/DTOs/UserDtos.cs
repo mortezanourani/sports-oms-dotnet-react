@@ -17,9 +17,8 @@
     );
 
     // What the Admin submits when editing an existing account.
-    // Password is intentionally excluded — password changes get their own
-    // dedicated endpoint later, since that's a more sensitive action that
-    // usually needs different handling (e.g. the user changing their own).
+    // Password is intentionally excluded — password changes use a separate
+    // endpoint with authorization appropriate to the type of change.
     public record UserUpdateDto(
     string FirstName,
     string LastName,
@@ -27,6 +26,10 @@
     string ScopeLevel,
     Guid? ScopeProvinceId,
     Guid? ScopeCityId
+    );
+
+    public record UserPasswordResetDto(
+    string NewPassword
     );
 
     // What gets returned to the frontend — deliberately excludes any password

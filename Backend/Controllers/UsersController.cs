@@ -165,6 +165,41 @@ namespace Backend.Controllers
         private bool CanDeactivateUsers() =>
             User.Role() is "Admin" or "Manager" or "HumanResourceManager" or "SportsManager";
 
+        private static int RolePriority(UserRole role) => role switch
+        {
+            UserRole.Admin => 4,
+            UserRole.Manager => 3,
+            UserRole.HumanResourceManager => 2,
+            UserRole.HumanResourceOfficer => 1,
+            _ => 0
+        };
+
+        private static int ScopePriority(ScopeLevel scope) => scope switch
+        {
+            ScopeLevel.Mastery => 2,
+            ScopeLevel.Province => 1,
+            _ => 0
+        };
+
+        private bool CanResetPassword(ApplicationUser target)
+        {
+            if (!Enum.TryParse<UserRole>(User.Role(), out var currentRole) ||
+                !Enum.TryParse<ScopeLevel>(User.ScopeLevel(), out var currentScope))
+                return false;
+
+            var hasHigherPriority =
+                RolePriority(currentRole) > RolePriority(target.Role) ||
+                ScopePriority(currentScope) > ScopePriority(target.ScopeLevel);
+
+            return hasHigherPriority &&
+                   CanManageTargetScope(
+                       target.ScopeLevel.ToString(),
+                       target.ScopeProvinceId,
+                       target.ScopeCityId,
+                       target.Role.ToString(),
+                       enforceRoleRestrictions: false);
+        }
+
         // GET /api/users?scopeLevel=&provinceId=&cityId=
         [HttpGet]
         [Authorize(Roles = UserManagementRoles)]
@@ -660,6 +695,28 @@ namespace Backend.Controllers
 
             await _userManager.SetLockoutEnabledAsync(user, true);
             await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.MaxValue);
+
+            return Ok(new { success = true });
+        }
+
+        [HttpPost("{id}/password")]
+        [Authorize(Roles = UserManagementRoles)]
+        public async Task<IActionResult> ResetPassword(Guid id, UserPasswordResetDto request)
+        {
+            var user = await _userManager.FindByIdAsync(id.ToString());
+            if (user == null || user.Role == UserRole.FederationRep)
+                return NotFound(new { detail = "کاربر یافت نشد" });
+
+            if (!CanResetPassword(user))
+                return Forbid();
+
+            if (request == null || string.IsNullOrWhiteSpace(request.NewPassword))
+                return BadRequest(new { detail = "رمز عبور جدید الزامی است" });
+
+            var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var result = await _userManager.ResetPasswordAsync(user, resetToken, request.NewPassword);
+            if (!result.Succeeded)
+                return BadRequest(new { detail = string.Join(" / ", result.Errors.Select(error => error.Description)) });
 
             return Ok(new { success = true });
         }
