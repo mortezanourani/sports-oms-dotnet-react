@@ -13,6 +13,7 @@ import FederationsList from './pages/dashboard/Federations/FederationsList';
 import AthleteCountsList from './pages/dashboard/Athletes/AthleteCountsList';
 import UsersList from './pages/dashboard/Users/UsersList';
 import MessagesPage from './pages/dashboard/Messages/MessagesPage';
+import ProfilePage from './pages/dashboard/Profile/ProfilePage';
 
 export default function App() {
   return (
@@ -41,6 +42,7 @@ export default function App() {
             </Route>
               <Route path="/dashboard/locations" element={<LocationsPage />} />
               <Route path="/dashboard/messages" element={<MessagesPage />} />
+              <Route path="/dashboard/profile" element={<ProfilePage />} />
           </Route>
         </Route>
       </Routes>

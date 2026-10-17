@@ -1,7 +1,8 @@
 import { Outlet, useNavigate, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { Layout, Menu, Button, Typography, Badge, Space, ConfigProvider } from 'antd';
 import {
-    MessageOutlined, LogoutOutlined,
+    MessageOutlined, LogoutOutlined, UserOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../hooks/useAuth';
 import { logout } from '../api/auth';
@@ -40,6 +41,13 @@ const SCOPE_RESTRICTION = {
 export default function DashboardLayout() {
     const { role, scopeLevel, fullName } = useAuth();
     const navigate = useNavigate();
+    const [displayName, setDisplayName] = useState(fullName);
+
+    useEffect(() => {
+        const handleProfileUpdate = (event) => setDisplayName(event.detail.fullName);
+        window.addEventListener('profile-updated', handleProfileUpdate);
+        return () => window.removeEventListener('profile-updated', handleProfileUpdate);
+    }, []);
 
     const { data: unreadData } = useUnreadCount();
     const ALL_MENU_ITEMS = [
@@ -88,16 +96,19 @@ export default function DashboardLayout() {
             <Layout style={{ minHeight: '100vh' }}>
                 <Header style={{ padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Space>
-                        <Text strong style={{ color: 'white' }}>{fullName}</Text>
+                        <Text strong style={{ color: 'white' }}>{displayName}</Text>
                         <Menu theme="dark" mode="horizontal" items={visibleItems} style={{ justifyContent: 'start'}} />
                     </Space>
                     <Space>
+                        <Link to="/dashboard/profile">
+                            <Button style={{ background: 'transparent', color: 'white' }} icon={<UserOutlined />}></Button>
+                        </Link>
                         <Link to="/dashboard/messages">
                             <Badge count={unreadData?.unreadCount} size="small" offset={[10, 0]}>
-                                <Button style={{ background: 'transparent', color: 'white' }} icon={<MessageOutlined />}>پیام‌ها</Button>
+                                <Button style={{ background: 'transparent', color: 'white' }} icon={<MessageOutlined />}></Button>
                             </Badge>
                         </Link>
-                        <Button style={{ background: 'transparent' }} icon={<LogoutOutlined />} onClick={handleLogout} danger>خروج</Button>
+                        <Button style={{ background: 'transparent' }} icon={<LogoutOutlined />} onClick={handleLogout} danger></Button>
                     </Space>
                 </Header>
                 <Content style={{ margin: 24 }}>

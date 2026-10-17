@@ -15,6 +15,7 @@ Sports OMS replaces a single-city, monolithic organizational-management system w
 - **Champions & medals** — a full career history per champion: every medal, competition, age group, and level they've ever won
 - **Federations** — including full historical tracking of who held each federation's President / Vice / Women's Vice position and when
 - **Role-based dashboard access** — from national administrators down to city-level officers, each scoped to see and edit only the data relevant to their role and geography
+- **User profiles** — authenticated users can update their own name and change their password after confirming their current password
 - **Internal messaging** — users can send reports and messages to one another, including file attachments
 
 Public-facing pages expose read-only statistics (facilities, champions, athlete counts) with no login required. Everything else lives behind an authenticated, role- and geography-scoped dashboard.
