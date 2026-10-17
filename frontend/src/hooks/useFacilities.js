@@ -39,3 +39,11 @@ export function useDeleteFacility() {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['facilities'] }),
     });
 }
+
+export function useImportPrivateFacilities() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: api.importPrivateFacilities,
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['facilities'] }),
+    });
+}

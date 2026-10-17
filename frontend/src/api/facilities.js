@@ -23,3 +23,12 @@ export const updateFacility = async ({ id, payload }) => {
 export const deleteFacility = async (id) => {
     await api.delete(`/facilities/${id}`);
 };
+
+export const importPrivateFacilities = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return (await api.post('/facilities/import', formData)).data;
+};
+
+export const downloadPrivateFacilitiesImportTemplate = async () =>
+    (await api.get('/facilities/import/template', { responseType: 'blob' })).data;
