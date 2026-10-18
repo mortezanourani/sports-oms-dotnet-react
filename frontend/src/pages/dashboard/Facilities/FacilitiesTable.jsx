@@ -10,7 +10,15 @@ import { useAuth } from '../../../hooks/useAuth';
 const FACILITY_TYPE_LABELS = { Msy: 'دولتی وزارت ورزش', Private: 'باشگاه خصوصی', Gov: 'دولتی سایر ارگان ها' };
 
 export default function FacilitiesTable({
-    filters, facilityTypes, page, onPageChange, renderLocationFilters, renderActions,
+    filters,
+    facilityTypes,
+    page,
+    onPageChange,
+    renderLocationFilters,
+    renderActions,
+    hideFacilityTypeColumn = false,
+    showCreateButton = true,
+    creationFacilityTypes = facilityTypes,
 }) {
     const [facilityType, setFacilityType] = useState(undefined);
     const [modalOpen, setModalOpen] = useState(false);
@@ -18,7 +26,7 @@ export default function FacilitiesTable({
     const [form] = Form.useForm();
     const { role } = useAuth();
     const selectedProvinceId = Form.useWatch('provinceId', form);
-    const defaultFacilityType = facilityTypes.length === 1 ? facilityTypes[0] : undefined;
+    const defaultFacilityType = creationFacilityTypes.length === 1 ? creationFacilityTypes[0] : undefined;
     const selectedFacilityType = defaultFacilityType || facilityType;
     const canDeleteFacility = ['Admin', 'Manager', 'M5Manager', 'M88Manager'].includes(role);
 
@@ -93,7 +101,9 @@ export default function FacilitiesTable({
 
     const columns = [
         { title: 'نام', dataIndex: 'name', key: 'name' },
-        { title: 'نوع', dataIndex: 'facilityType', key: 'facilityType', render: (v) => FACILITY_TYPE_LABELS[v] || v },
+        ...(!hideFacilityTypeColumn
+            ? [{ title: 'نوع', dataIndex: 'facilityType', key: 'facilityType', render: (v) => FACILITY_TYPE_LABELS[v] || v }]
+            : []),
         { title: 'استان', dataIndex: 'provinceName', key: 'provinceName' },
         { title: 'شهر', dataIndex: 'cityName', key: 'cityName' },
         { title: 'آدرس', dataIndex: 'address', key: 'address' },
@@ -132,7 +142,9 @@ export default function FacilitiesTable({
                 <div>{renderLocationFilters?.(facilityTypeFilter) || facilityTypeFilter}</div>
                 <Space>
                     {renderActions}
-                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>افزودن مکان جدید</Button>
+                    {showCreateButton && (
+                        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>افزودن مکان جدید</Button>
+                    )}
                 </Space>
             </div>
 
@@ -157,8 +169,8 @@ export default function FacilitiesTable({
                 <Form form={form} layout="vertical" onFinish={handleFinish} disabled={isFetchingEditingFacility}>
                     <Form.Item name="facilityType" label="نوع مکان" rules={[{ required: true }]}>
                         <Select
-                            options={facilityTypes.map((type) => ({ value: type, label: FACILITY_TYPE_LABELS[type] }))}
-                            disabled={facilityTypes.length === 1}
+                            options={creationFacilityTypes.map((type) => ({ value: type, label: FACILITY_TYPE_LABELS[type] }))}
+                            disabled={Boolean(editingId) || creationFacilityTypes.length === 1}
                         />
                     </Form.Item>
                     <Form.Item name="name" label="نام" rules={[{ required: true }]}>
