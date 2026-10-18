@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Table, Button, Space, Popconfirm, message, Select, Modal, Form, Input } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, HistoryOutlined } from '@ant-design/icons';
 import {
     useFacilities, useFacility, useCreateFacility, useUpdateFacility, useDeleteFacility,
 } from '../../../hooks/useFacilities';
 import { useProvinces, useCities } from '../../../hooks/useLocations';
 import { useAuth } from '../../../hooks/useAuth';
+import ContractHistoryModal from './ContractHistoryModal';
 
 const FACILITY_TYPE_LABELS = { Msy: 'دولتی وزارت ورزش', Private: 'باشگاه خصوصی', Gov: 'دولتی سایر ارگان ها' };
 
@@ -23,12 +24,14 @@ export default function FacilitiesTable({
     const [facilityType, setFacilityType] = useState(undefined);
     const [modalOpen, setModalOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
+    const [contractsFacility, setContractsFacility] = useState(null);
     const [form] = Form.useForm();
     const { role } = useAuth();
     const selectedProvinceId = Form.useWatch('provinceId', form);
     const defaultFacilityType = creationFacilityTypes.length === 1 ? creationFacilityTypes[0] : undefined;
     const selectedFacilityType = defaultFacilityType || facilityType;
     const canDeleteFacility = ['Admin', 'Manager', 'M5Manager', 'M88Manager'].includes(role);
+    const canViewContracts = ['Admin', 'Manager', 'M88Manager', 'M88Officer'].includes(role);
 
     const { data, isLoading } = useFacilities({
         page,
@@ -111,6 +114,15 @@ export default function FacilitiesTable({
             title: 'عملیات', key: 'actions',
             render: (_, record) => (
                 <Space>
+                    {record.facilityType === 'Msy' && canViewContracts && (
+                        <Button
+                            icon={<HistoryOutlined />}
+                            size="small"
+                            onClick={() => setContractsFacility(record)}
+                        >
+                            سوابق قراردادها
+                        </Button>
+                    )}
                     <Button icon={<EditOutlined />} size="small" onClick={() => openEditModal(record)} />
                     {canDeleteFacility && (
                         <Popconfirm title="آیا از حذف این مورد مطمئن هستید؟" onConfirm={() => handleDelete(record.id)} okText="بله" cancelText="خیر">
@@ -206,6 +218,13 @@ export default function FacilitiesTable({
                     </Form.Item>
                 </Form>
             </Modal>
+            {facilityTypes.includes('Msy') && (
+                <ContractHistoryModal
+                    facility={contractsFacility}
+                    open={Boolean(contractsFacility)}
+                    onClose={() => setContractsFacility(null)}
+                />
+            )}
         </div>
     );
 }
