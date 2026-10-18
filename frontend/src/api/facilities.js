@@ -34,6 +34,16 @@ export const createFacilityContract = async ({ facilityId, payload }) => {
     return data;
 };
 
+export const getFacilityLicenses = async (facilityId) => {
+    const { data } = await api.get(`/facilities/${facilityId}/licenses`);
+    return data;
+};
+
+export const createFacilityLicense = async ({ facilityId, payload }) => {
+    const { data } = await api.post(`/facilities/${facilityId}/licenses`, payload);
+    return data;
+};
+
 export const importPrivateFacilities = async (file) => {
     const formData = new FormData();
     formData.append('file', file);

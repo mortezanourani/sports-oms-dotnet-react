@@ -57,6 +57,23 @@ export function useCreateFacilityContract() {
     });
 }
 
+export function useFacilityLicenses(facilityId, enabled = true) {
+    return useQuery({
+        queryKey: ['facilityLicenses', facilityId],
+        queryFn: () => api.getFacilityLicenses(facilityId),
+        enabled: Boolean(facilityId) && enabled,
+    });
+}
+
+export function useCreateFacilityLicense() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: api.createFacilityLicense,
+        onSuccess: (_data, { facilityId }) =>
+            queryClient.invalidateQueries({ queryKey: ['facilityLicenses', facilityId] }),
+    });
+}
+
 export function useImportPrivateFacilities() {
     const queryClient = useQueryClient();
     return useMutation({
