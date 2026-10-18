@@ -32,7 +32,8 @@ public class ChampionImportControllerTests
         var medal = await context.Medals.SingleAsync();
         Assert.Equal(MedalType.Gold, medal.MedalType);
         Assert.Equal(scope.Federation.Id, (await context.Champions.SingleAsync()).FederationId);
-        Assert.Equal(new DateOnly(2024, 4, 3), (await context.Champions.SingleAsync()).BirthDate);
+        Assert.Equal(TehranDateTime.ToUtc(new DateOnly(2024, 4, 3)),
+            (await context.Champions.SingleAsync()).BirthDate);
     }
 
     [Fact]

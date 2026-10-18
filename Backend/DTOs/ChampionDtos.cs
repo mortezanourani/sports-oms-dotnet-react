@@ -1,11 +1,11 @@
 ﻿namespace Backend.DTOs
 {
     public record ChampionCreateDto(
-        string FullName, DateOnly? BirthDate, string Gender,
+        string FullName, DateTime? BirthDate, string Gender,
         Guid FederationId, Guid? CityId, string? PhotoPath);
 
     public record ChampionUpdateDto(
-        string FullName, DateOnly? BirthDate, string Gender,
+        string FullName, DateTime? BirthDate, string Gender,
         Guid FederationId, Guid? CityId, string? PhotoPath);
 
     // Used in list views — deliberately excludes the full Medals collection,
@@ -13,7 +13,7 @@
     // would be a heavy response for a page that's just meant to show names
     // and basic info in a table.
     public record ChampionListOutDto(
-        Guid Id, string FullName, DateOnly? BirthDate, string Gender,
+        Guid Id, string FullName, DateTime? BirthDate, string Gender,
         Guid FederationId, string FederationName,
         Guid? CityId, string? CityName, int MedalCount);
 
@@ -21,7 +21,7 @@
     // medal history actually belongs, since that's exactly the page where
     // a user wants to see it.
     public record ChampionDetailOutDto(
-        Guid Id, string FullName, DateOnly? BirthDate, string Gender,
+        Guid Id, string FullName, DateTime? BirthDate, string Gender,
         Guid FederationId, string FederationName,
         Guid? CityId, Guid? ProvinceId, string? CityName, string? ProvinceName,
         string? PhotoPath, List<MedalOutDto> Medals);

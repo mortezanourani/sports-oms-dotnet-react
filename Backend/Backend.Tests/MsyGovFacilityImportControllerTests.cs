@@ -102,8 +102,8 @@ public class MsyGovFacilityImportControllerTests
         var contract = await context.FacilityContracts.SingleAsync();
         Assert.Equal("CN-1", contract.ContractNumber);
         Assert.Equal("طرف قرارداد", contract.ThirdPartyName);
-        Assert.Equal(new DateOnly(2024, 4, 3), contract.StartDate);
-        Assert.Equal(new DateOnly(2025, 4, 4), contract.EndDate);
+        Assert.Equal(TehranDateTime.ToUtc(new DateOnly(2024, 4, 3)), contract.StartDate);
+        Assert.Equal(TehranDateTime.ToUtc(new DateOnly(2025, 4, 4)), contract.EndDate);
     }
 
     [Fact]
@@ -124,8 +124,8 @@ public class MsyGovFacilityImportControllerTests
             ContractNumber = "CN-1",
             ThirdPartyName = "طرف قرارداد",
             ThirdPartyContact = "021-123",
-            StartDate = new DateOnly(2024, 4, 3),
-            EndDate = new DateOnly(2025, 4, 4)
+            StartDate = TehranDateTime.ToUtc(new DateOnly(2024, 4, 3)),
+            EndDate = TehranDateTime.ToUtc(new DateOnly(2025, 4, 4))
         });
         await context.SaveChangesAsync();
         var row = ValidRow("Msy", "مرکز نمونه");

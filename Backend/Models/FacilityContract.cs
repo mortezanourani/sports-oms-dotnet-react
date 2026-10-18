@@ -6,8 +6,8 @@ namespace Backend.Models
         public string? ContractNumber { get; set; }
         public string ThirdPartyName { get; set; } = string.Empty;
         public string? ThirdPartyContact { get; set; }
-        public DateOnly StartDate { get; set; }
-        public DateOnly? EndDate { get; set; }
+        public DateTime StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
         public string? ContractFilePath { get; set; }
 
         public Guid FacilityId { get; set; }

@@ -195,8 +195,8 @@ namespace Backend.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<DateOnly?>("BirthDate")
-                        .HasColumnType("date")
+                    b.Property<DateTime?>("BirthDate")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("birth_date");
 
                     b.Property<Guid?>("CityId")
@@ -342,16 +342,16 @@ namespace Backend.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<DateOnly?>("EndDate")
-                        .HasColumnType("date")
+                    b.Property<DateTime?>("EndDate")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("end_date");
 
                     b.Property<Guid>("FacilityId")
                         .HasColumnType("uuid")
                         .HasColumnName("facility_id");
 
-                    b.Property<DateOnly>("StartDate")
-                        .HasColumnType("date")
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("start_date");
 
                     b.Property<string>("ThirdPartyContact")
@@ -383,8 +383,8 @@ namespace Backend.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<DateOnly?>("ExpiryDate")
-                        .HasColumnType("date")
+                    b.Property<DateTime?>("ExpiryDate")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("expiry_date");
 
                     b.Property<Guid>("FacilityId")
@@ -396,8 +396,8 @@ namespace Backend.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("holder_name");
 
-                    b.Property<DateOnly>("IssueDate")
-                        .HasColumnType("date")
+                    b.Property<DateTime>("IssueDate")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("issue_date");
 
                     b.Property<string>("LicenseFilePath")
@@ -472,8 +472,8 @@ namespace Backend.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<DateOnly?>("EndDate")
-                        .HasColumnType("date")
+                    b.Property<DateTime?>("EndDate")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("end_date");
 
                     b.Property<Guid>("FederationId")
@@ -485,8 +485,8 @@ namespace Backend.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("position");
 
-                    b.Property<DateOnly>("StartDate")
-                        .HasColumnType("date")
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("timestamp with time zone")
                         .HasColumnName("start_date");
 
                     b.Property<Guid>("UserId")

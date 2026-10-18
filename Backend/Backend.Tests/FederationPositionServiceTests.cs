@@ -9,6 +9,14 @@ namespace Backend.Tests;
 public class FederationPositionServiceTests
 {
     [Fact]
+    public void TehranDateTime_ConvertsLocalMidnightToUtc()
+    {
+        Assert.Equal(
+            new DateTime(2024, 4, 2, 20, 30, 0, DateTimeKind.Utc),
+            TehranDateTime.ToUtc(new DateOnly(2024, 4, 3)));
+    }
+
+    [Fact]
     public async Task AssignAsync_CreatesPositionWithCalculatedOneYearTerm()
     {
         await using var context = CreateContext();
@@ -17,11 +25,11 @@ public class FederationPositionServiceTests
         var federation = new Federation { Id = Guid.NewGuid(), Level = FederationLevel.National };
 
         var (position, error) = await service.AssignAsync(
-            user, federation, FederationPositionType.President, new DateOnly(2025, 1, 1), null);
+            user, federation, FederationPositionType.President, TehranDate(2025, 1, 1), null);
 
         Assert.Null(error);
         Assert.NotNull(position);
-        Assert.Equal(new DateOnly(2026, 1, 1), position.EndDate);
+        Assert.Equal(TehranDate(2026, 1, 1), position.EndDate);
         Assert.Same(position, await context.FederationPositions.SingleAsync());
     }
 
@@ -38,8 +46,8 @@ public class FederationPositionServiceTests
             new ApplicationUser { Id = Guid.NewGuid() },
             new Federation { Id = Guid.NewGuid() },
             FederationPositionType.President,
-            new DateOnly(startYear, startMonth, startDay),
-            new DateOnly(endYear, endMonth, endDay));
+            TehranDate(startYear, startMonth, startDay),
+            TehranDate(endYear, endMonth, endDay));
 
         Assert.Null(position);
         Assert.NotNull(error);
@@ -58,13 +66,13 @@ public class FederationPositionServiceTests
             UserId = user.Id,
             FederationId = federation.Id,
             Position = FederationPositionType.President,
-            StartDate = new DateOnly(2024, 6, 1),
-            EndDate = new DateOnly(2025, 6, 1)
+            StartDate = TehranDate(2024, 6, 1),
+            EndDate = TehranDate(2025, 6, 1)
         });
         await context.SaveChangesAsync();
 
         var (position, error) = await new FederationPositionService(context).AssignAsync(
-            user, federation, FederationPositionType.President, new DateOnly(2025, 5, 31), null);
+            user, federation, FederationPositionType.President, TehranDate(2025, 5, 31), null);
 
         Assert.Null(position);
         Assert.Contains("یک سال گذشته", error);
@@ -83,13 +91,13 @@ public class FederationPositionServiceTests
             UserId = user.Id,
             FederationId = federation.Id,
             Position = FederationPositionType.President,
-            StartDate = new DateOnly(2024, 1, 1),
-            EndDate = new DateOnly(2024, 12, 31)
+            StartDate = TehranDate(2024, 1, 1),
+            EndDate = TehranDate(2024, 12, 31)
         });
         await context.SaveChangesAsync();
 
         var (position, error) = await new FederationPositionService(context).AssignAsync(
-            user, federation, FederationPositionType.Miss, new DateOnly(2024, 6, 1), null);
+            user, federation, FederationPositionType.Miss, TehranDate(2024, 6, 1), null);
 
         Assert.Null(position);
         Assert.Contains("سمت دیگری", error);
@@ -103,4 +111,7 @@ public class FederationPositionServiceTests
             .Options;
         return new ApplicationDbContext(options);
     }
+
+    private static DateTime TehranDate(int year, int month, int day) =>
+        TehranDateTime.ToUtc(new DateOnly(year, month, day));
 }

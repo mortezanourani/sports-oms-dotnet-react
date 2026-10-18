@@ -56,15 +56,15 @@
     public record FederationPositionAssignDto(
     Guid FederationId,
     string Position, // "President", "Miss", or "Vice"
-    DateOnly StartDate,
-    DateOnly? EndDate
+    DateTime StartDate,
+    DateTime? EndDate
     );
 
     public record FederationPositionOutDto(
     Guid Id,
     string Position,
-    DateOnly StartDate,
-    DateOnly? EndDate,
+    DateTime StartDate,
+    DateTime? EndDate,
     Guid UserId,
     string UserFirstName,
     string UserLastName,

@@ -107,7 +107,7 @@ public class PrivateFacilityImportControllerTests
         Assert.Single(await context.Facilities.ToListAsync());
         var license = await context.FacilityLicenses.SingleAsync();
         Assert.Equal("LIC-1", license.LicenseNumber);
-        Assert.Equal(new DateOnly(2024, 4, 3), license.IssueDate);
+        Assert.Equal(TehranDateTime.ToUtc(new DateOnly(2024, 4, 3)), license.IssueDate);
     }
 
     [Fact]

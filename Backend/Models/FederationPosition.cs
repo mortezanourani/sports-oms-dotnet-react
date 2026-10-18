@@ -11,8 +11,8 @@ namespace Backend.Models
     {
         public Guid Id { get; set; }
         public FederationPositionType Position { get; set; }
-        public DateOnly StartDate { get; set; }
-        public DateOnly? EndDate { get; set; } // null = currently active
+        public DateTime StartDate { get; set; }
+        public DateTime? EndDate { get; set; } // null = currently active
 
         public Guid UserId { get; set; }
         public ApplicationUser User { get; set; } = null!;
