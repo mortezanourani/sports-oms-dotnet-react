@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Button, Form, Input, message, Modal, Table } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useCreateFacilityContract, useFacilityContracts } from '../../../hooks/useFacilities';
+import SolarDatePicker from '../../../components/SolarDatePicker';
+import { formatSolarDate, toUtcDateTime } from '../../../utils/dates';
 
 export default function ContractHistoryModal({ facility, open, onClose }) {
     const [addModalOpen, setAddModalOpen] = useState(false);
@@ -26,8 +28,8 @@ export default function ContractHistoryModal({ facility, open, onClose }) {
         try {
             const payload = {
                 ...values,
-                startDate: values.startDate,
-                endDate: values.endDate || null,
+                startDate: toUtcDateTime(values.startDate),
+                endDate: toUtcDateTime(values.endDate),
             };
             await createMutation.mutateAsync({ facilityId: facility.id, payload });
             message.success('قرارداد با موفقیت ثبت شد');
@@ -42,8 +44,8 @@ export default function ContractHistoryModal({ facility, open, onClose }) {
         { title: 'شماره قرارداد', dataIndex: 'contractNumber' },
         { title: 'طرف قرارداد', dataIndex: 'thirdPartyName' },
         { title: 'تماس', dataIndex: 'thirdPartyContact' },
-        { title: 'از تاریخ', dataIndex: 'startDate' },
-        { title: 'تا تاریخ', dataIndex: 'endDate', render: (value) => value || '—' },
+        { title: 'از تاریخ', dataIndex: 'startDate', render: formatSolarDate },
+        { title: 'تا تاریخ', dataIndex: 'endDate', render: formatSolarDate },
         { title: 'فایل قرارداد', dataIndex: 'contractFilePath', render: (value) => value || '—' },
     ];
 
@@ -101,10 +103,10 @@ export default function ContractHistoryModal({ facility, open, onClose }) {
                         label="تاریخ شروع"
                         rules={[{ required: true, message: 'تاریخ شروع قرارداد الزامی است' }]}
                     >
-                        <Input type="date" />
+                        <SolarDatePicker />
                     </Form.Item>
                     <Form.Item name="endDate" label="تاریخ پایان">
-                        <Input type="date" />
+                        <SolarDatePicker />
                     </Form.Item>
                     <Form.Item name="contractFilePath" label="مسیر فایل قرارداد">
                         <Input />

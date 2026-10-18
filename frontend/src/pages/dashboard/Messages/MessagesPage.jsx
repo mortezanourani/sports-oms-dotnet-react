@@ -4,6 +4,7 @@ import { PlusOutlined, PaperClipOutlined } from '@ant-design/icons';
 import { useInbox, useSent } from '../../../hooks/useMessages';
 import ComposeModal from './ComposeModal';
 import MessageDetail from './MessageDetail';
+import { formatSolarDate } from '../../../utils/dates';
 
 const { Title } = Typography;
 
@@ -39,7 +40,7 @@ export default function MessagesPage() {
             render: (count) => count > 0 && <PaperClipOutlined title={`${count} پیوست`} />,
             width: 40,
         },
-        { title: 'تاریخ', dataIndex: 'createdAt', render: (v) => new Date(v).toLocaleDateString('fa-IR') },
+        { title: 'تاریخ', dataIndex: 'createdAt', render: formatSolarDate },
     ];
 
     return (
