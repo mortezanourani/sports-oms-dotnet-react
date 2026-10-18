@@ -14,11 +14,13 @@ namespace Backend.Services
             ApplicationUser user,
             Federation federation,
             FederationPositionType position,
-            DateOnly startDate,
-            DateOnly? endDate,
+            DateTime startDate,
+            DateTime? endDate,
             bool persistCalculatedEndDateWhenUnspecified = true)
         {
-            DateOnly termEndDate;
+            startDate = TehranDateTime.NormalizeUtc(startDate);
+            endDate = endDate.HasValue ? TehranDateTime.NormalizeUtc(endDate.Value) : null;
+            DateTime termEndDate;
             try
             {
                 termEndDate = startDate.AddYears(1);
@@ -41,14 +43,14 @@ namespace Backend.Services
                 .FirstOrDefault();
             if (latestSamePosition != null)
             {
-                DateOnly nextEligibleDate;
+                DateTime nextEligibleDate;
                 try
                 {
                     nextEligibleDate = latestSamePosition.StartDate.AddYears(1);
                 }
                 catch (ArgumentOutOfRangeException)
                 {
-                    nextEligibleDate = DateOnly.MaxValue;
+                    nextEligibleDate = DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc);
                 }
 
                 if (startDate < nextEligibleDate)
@@ -79,15 +81,16 @@ namespace Backend.Services
             return (newPosition, null);
         }
 
-        public static DateOnly GetTermEndDate(DateOnly startDate)
+        public static DateTime GetTermEndDate(DateTime startDate)
         {
+            startDate = TehranDateTime.NormalizeUtc(startDate);
             try
             {
                 return startDate.AddYears(1);
             }
             catch (ArgumentOutOfRangeException)
             {
-                return DateOnly.MaxValue;
+                return DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc);
             }
         }
     }

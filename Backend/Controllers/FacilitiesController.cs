@@ -301,8 +301,8 @@ namespace Backend.Controllers
                 {
                     LicenseNumber = row.LicenseNumber!.Trim(),
                     HolderName = row.LicenseHolderName!.Trim(),
-                    IssueDate = issueDate,
-                    ExpiryDate = expiryDate
+                    IssueDate = TehranDateTime.ToUtc(issueDate),
+                    ExpiryDate = expiryDate.HasValue ? TehranDateTime.ToUtc(expiryDate.Value) : null
                 });
                 await _db.SaveChangesAsync();
                 createdLicenses++;
@@ -490,6 +490,8 @@ namespace Backend.Controllers
                     row.ContractThirdPartyContact ?? string.Empty);
                 var normalizedContractNumber = PrivateFacilityImportWorkbook.NormalizeName(
                     row.ContractNumber ?? string.Empty);
+                var utcStartDate = TehranDateTime.ToUtc(startDate);
+                DateTime? utcEndDate = endDate.HasValue ? TehranDateTime.ToUtc(endDate.Value) : null;
                 if (existingFacility.Contracts.Any(contract =>
                         PrivateFacilityImportWorkbook.NormalizeName(contract.ContractNumber ?? string.Empty) ==
                             normalizedContractNumber &&
@@ -497,8 +499,8 @@ namespace Backend.Controllers
                             normalizedThirdPartyName &&
                         PrivateFacilityImportWorkbook.NormalizeName(contract.ThirdPartyContact ?? string.Empty) ==
                             normalizedThirdPartyContact &&
-                        contract.StartDate == startDate &&
-                        contract.EndDate == endDate))
+                        contract.StartDate == utcStartDate &&
+                        contract.EndDate == utcEndDate))
                 {
                     skippedExistingContracts++;
                     continue;
@@ -510,8 +512,8 @@ namespace Backend.Controllers
                     ContractNumber = row.ContractNumber?.Trim(),
                     ThirdPartyName = row.ContractThirdPartyName?.Trim() ?? string.Empty,
                     ThirdPartyContact = row.ContractThirdPartyContact?.Trim(),
-                    StartDate = startDate,
-                    EndDate = endDate
+                    StartDate = utcStartDate,
+                    EndDate = utcEndDate
                 };
                 _db.FacilityContracts.Add(newContract);
                 existingFacility.Contracts.Add(newContract);
@@ -804,8 +806,8 @@ namespace Backend.Controllers
                 ContractNumber = dto.ContractNumber?.Trim(),
                 ThirdPartyName = dto.ThirdPartyName ?? string.Empty,
                 ThirdPartyContact = dto.ThirdPartyContact,
-                StartDate = DateOnly.FromDateTime(dto.StartDate.Value),
-                EndDate = dto.EndDate.HasValue ? DateOnly.FromDateTime(dto.EndDate.Value) : null,
+                StartDate = TehranDateTime.NormalizeUtc(dto.StartDate.Value),
+                EndDate = dto.EndDate.HasValue ? TehranDateTime.NormalizeUtc(dto.EndDate.Value) : null,
                 ContractFilePath = dto.ContractFilePath,
                 CreatedAt = DateTime.UtcNow
             };
@@ -842,8 +844,8 @@ namespace Backend.Controllers
             contract.ContractNumber = dto.ContractNumber?.Trim();
             contract.ThirdPartyName = dto.ThirdPartyName ?? string.Empty;
             contract.ThirdPartyContact = dto.ThirdPartyContact;
-            contract.StartDate = DateOnly.FromDateTime(dto.StartDate.Value);
-            contract.EndDate = dto.EndDate.HasValue ? DateOnly.FromDateTime(dto.EndDate.Value) : null;
+            contract.StartDate = TehranDateTime.NormalizeUtc(dto.StartDate.Value);
+            contract.EndDate = dto.EndDate.HasValue ? TehranDateTime.NormalizeUtc(dto.EndDate.Value) : null;
             contract.ContractFilePath = dto.ContractFilePath;
 
             await _db.SaveChangesAsync();
@@ -961,8 +963,8 @@ namespace Backend.Controllers
                 FacilityId = facilityId,
                 LicenseNumber = dto.LicenseNumber ?? string.Empty,
                 HolderName = dto.HolderName ?? string.Empty,
-                IssueDate = DateOnly.FromDateTime(dto.IssueDate.Value),
-                ExpiryDate = dto.ExpiryDate.HasValue ? DateOnly.FromDateTime(dto.ExpiryDate.Value) : null,
+                IssueDate = TehranDateTime.NormalizeUtc(dto.IssueDate.Value),
+                ExpiryDate = dto.ExpiryDate.HasValue ? TehranDateTime.NormalizeUtc(dto.ExpiryDate.Value) : null,
                 LicenseFilePath = dto.LicenseFilePath,
                 CreatedAt = DateTime.UtcNow
             };
@@ -998,8 +1000,8 @@ namespace Backend.Controllers
 
             license.LicenseNumber = dto.LicenseNumber ?? string.Empty;
             license.HolderName = dto.HolderName ?? string.Empty;
-            license.IssueDate = DateOnly.FromDateTime(dto.IssueDate.Value);
-            license.ExpiryDate = dto.ExpiryDate.HasValue ? DateOnly.FromDateTime(dto.ExpiryDate.Value) : null;
+            license.IssueDate = TehranDateTime.NormalizeUtc(dto.IssueDate.Value);
+            license.ExpiryDate = dto.ExpiryDate.HasValue ? TehranDateTime.NormalizeUtc(dto.ExpiryDate.Value) : null;
             license.LicenseFilePath = dto.LicenseFilePath;
 
             await _db.SaveChangesAsync();

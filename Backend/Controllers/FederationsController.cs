@@ -317,7 +317,8 @@ namespace Backend.Controllers
                 }
 
                 var (assignedPosition, assignmentError) = await _federationPositionService.AssignAsync(
-                    user, federation, position!.Value, startDate!.Value, endDate,
+                    user, federation, position!.Value, TehranDateTime.ToUtc(startDate!.Value),
+                    endDate.HasValue ? TehranDateTime.ToUtc(endDate.Value) : null,
                     persistCalculatedEndDateWhenUnspecified: false);
                 if (assignmentError != null)
                 {
@@ -812,7 +813,7 @@ namespace Backend.Controllers
             if (!CanManageFederationRepScope(federation))
                 return Forbid("شما اجازه مشاهده نمایندگان فurasیون در این سطح را ندارید");
 
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var today = TehranDateTime.TodayUtc;
             var assignments = await _db.FederationPositions
                 .Include(p => p.User)
                 .Where(p => p.FederationId == id && p.StartDate <= today)
@@ -838,7 +839,7 @@ namespace Backend.Controllers
             if (!CanManageFederationRepScope(federation))
                 return Forbid("شما اجازه مشاهده نمایندگان فurasیون در این سطح را ندارید");
 
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var today = TehranDateTime.TodayUtc;
             var assignment = await _db.FederationPositions
                 .Include(p => p.User)
                 .Where(p => p.FederationId == id && p.UserId == userId && p.StartDate <= today)
@@ -968,7 +969,7 @@ namespace Backend.Controllers
             if (!CanManageFederationRepScope(federation))
                 return Forbid("شما اجازه غیرفعال‌سازی این نماینده فurasیون را ندارید");
 
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var today = TehranDateTime.TodayUtc;
             var assignments = await _db.FederationPositions
                 .Where(p => p.FederationId == id && p.UserId == userId && p.StartDate <= today)
                 .ToListAsync();

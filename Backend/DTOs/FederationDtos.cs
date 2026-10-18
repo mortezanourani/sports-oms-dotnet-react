@@ -25,6 +25,6 @@
         string? FirstName,
         string? LastName,
         string Position,
-        DateOnly StartDate,
-        DateOnly? EndDate);
+        DateTime StartDate,
+        DateTime? EndDate);
 }

@@ -211,7 +211,7 @@ namespace Backend.Controllers
                     FullName = row.FullName.Trim(),
                     Gender = gender,
                     BirthDate = ChampionImportWorkbook.TryParseSolarDate(row.BirthDate, out var birthDate)
-                        ? birthDate
+                        ? TehranDateTime.ToUtc(birthDate)
                         : null,
                     FederationId = federation.Id,
                     CityId = city?.Id
@@ -494,7 +494,7 @@ namespace Backend.Controllers
             var champion = new Champion
             {
                 FullName = dto.FullName,
-                BirthDate = dto.BirthDate,
+                BirthDate = dto.BirthDate.HasValue ? TehranDateTime.NormalizeUtc(dto.BirthDate.Value) : null,
                 Gender = genderEnum,
                 FederationId = dto.FederationId,
                 CityId = dto.CityId,
@@ -542,7 +542,7 @@ namespace Backend.Controllers
             }
 
             champion.FullName = dto.FullName;
-            champion.BirthDate = dto.BirthDate;
+            champion.BirthDate = dto.BirthDate.HasValue ? TehranDateTime.NormalizeUtc(dto.BirthDate.Value) : null;
             champion.Gender = genderEnum;
             champion.FederationId = dto.FederationId;
             champion.CityId = dto.CityId;

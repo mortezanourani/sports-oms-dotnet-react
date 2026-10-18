@@ -5,8 +5,8 @@ namespace Backend.Models
         public Guid Id { get; set; }
         public string LicenseNumber { get; set; } = string.Empty;
         public string HolderName { get; set; } = string.Empty;
-        public DateOnly IssueDate { get; set; }
-        public DateOnly? ExpiryDate { get; set; }
+        public DateTime IssueDate { get; set; }
+        public DateTime? ExpiryDate { get; set; }
         public string? LicenseFilePath { get; set; }
 
         public Guid FacilityId { get; set; }
