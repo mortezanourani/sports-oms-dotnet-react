@@ -7,6 +7,7 @@ import {
 import { useProvinces, useCities } from '../../../hooks/useLocations';
 import { useAuth } from '../../../hooks/useAuth';
 import ContractHistoryModal from './ContractHistoryModal';
+import LicenseHistoryModal from './LicenseHistoryModal';
 
 const FACILITY_TYPE_LABELS = { Msy: 'دولتی وزارت ورزش', Private: 'باشگاه خصوصی', Gov: 'دولتی سایر ارگان ها' };
 
@@ -25,6 +26,7 @@ export default function FacilitiesTable({
     const [modalOpen, setModalOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [contractsFacility, setContractsFacility] = useState(null);
+    const [licensesFacility, setLicensesFacility] = useState(null);
     const [form] = Form.useForm();
     const { role } = useAuth();
     const selectedProvinceId = Form.useWatch('provinceId', form);
@@ -32,6 +34,7 @@ export default function FacilitiesTable({
     const selectedFacilityType = defaultFacilityType || facilityType;
     const canDeleteFacility = ['Admin', 'Manager', 'M5Manager', 'M88Manager'].includes(role);
     const canViewContracts = ['Admin', 'Manager', 'M88Manager', 'M88Officer'].includes(role);
+    const canViewLicenses = ['Admin', 'Manager', 'M5Manager', 'M5Officer'].includes(role);
 
     const { data, isLoading } = useFacilities({
         page,
@@ -121,6 +124,15 @@ export default function FacilitiesTable({
                             onClick={() => setContractsFacility(record)}
                         >
                             سوابق قراردادها
+                        </Button>
+                    )}
+                    {record.facilityType === 'Private' && canViewLicenses && (
+                        <Button
+                            icon={<HistoryOutlined />}
+                            size="small"
+                            onClick={() => setLicensesFacility(record)}
+                        >
+                            سوابق مجوزها
                         </Button>
                     )}
                     <Button icon={<EditOutlined />} size="small" onClick={() => openEditModal(record)} />
@@ -223,6 +235,13 @@ export default function FacilitiesTable({
                     facility={contractsFacility}
                     open={Boolean(contractsFacility)}
                     onClose={() => setContractsFacility(null)}
+                />
+            )}
+            {facilityTypes.includes('Private') && (
+                <LicenseHistoryModal
+                    facility={licensesFacility}
+                    open={Boolean(licensesFacility)}
+                    onClose={() => setLicensesFacility(null)}
                 />
             )}
         </div>
