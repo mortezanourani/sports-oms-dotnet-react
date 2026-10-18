@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Button, Typography, Popconfirm, message, Space, Tag, Form, Modal, Input } from 'antd';
+import { Table, Button, Popconfirm, message, Space, Tag, Form, Modal, Input } from 'antd';
 import { PlusOutlined, DeleteOutlined, HistoryOutlined, EditOutlined } from '@ant-design/icons';
 import { useFederations, useDeleteFederation, useUpdateFederation } from '../../../hooks/useFederations';
 import { useAuth } from '../../../hooks/useAuth';
@@ -7,9 +7,6 @@ import { canManageMastery } from '../../../utils/federationPermissions';
 import { FEDERATION_CATEGORY_LABELS } from '../../../constants/labels';
 import FederationFormModal from './FederationFormModal';
 import PositionsModal from './PositionsModal';
-import ProvincialFederationsPanel from './ProvincialFederationsPanel';
-
-const { Title } = Typography;
 
 export default function FederationsList() {
     const auth = useAuth();

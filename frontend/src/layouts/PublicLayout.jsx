@@ -10,10 +10,6 @@ const items = [
     { key: '/facilities', label: <Link to="/facilities">اماکن ورزشی</Link> },
 ];
 
-const loginItems = [
-
-];
-
 export default function PublicLayout() {
     return (
         <ConfigProvider

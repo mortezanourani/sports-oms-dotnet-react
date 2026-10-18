@@ -31,7 +31,7 @@ export default function MessageDetail({ messageId, open, onClose, isSentView }) 
             link.download = attachment.fileName;
             link.click();
             window.URL.revokeObjectURL(url);
-        } catch (err) {
+        } catch {
             message.error('خطا در دریافت فایل');
         }
     };

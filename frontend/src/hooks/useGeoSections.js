@@ -1,12 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth } from './useAuth';
 import { useProvinces, useCities } from './useLocations';
 
 export function useGeoSections() {
     const auth = useAuth();
     const { data: allProvinces } = useProvinces();
-    const [selectedProvinceId, setSelectedProvinceId] = useState(null);
-    const [selectedCityId, setSelectedCityId] = useState(null);
+    const [masteryProvinceId, setMasteryProvinceId] = useState(null);
+    const [unscopedCityId, setUnscopedCityId] = useState(null);
+    const selectedProvinceId = auth.scopeLevel === 'Mastery'
+        ? masteryProvinceId
+        : auth.scopeProvinceId;
+    const selectedCityId = auth.scopeLevel === 'City'
+        ? auth.scopeCityId
+        : unscopedCityId;
     const { data: allCities } = useCities(selectedProvinceId);
 
     // Mastery section only exists for Mastery-scope users. Province section
@@ -15,15 +21,6 @@ export function useGeoSections() {
     // more restricted — or entirely absent — selectors.
     const showMastery = auth.scopeLevel === 'Mastery';
     const showProvinceSection = auth.scopeLevel === 'Mastery' || auth.scopeLevel === 'Province';
-
-    // Auto-lock the selection to the user's own region the moment we know
-    // their scope — this is what makes a Province-scoped user's "Province
-    // section" show their own data immediately, with no manual selection
-    // step, and feeds the correct city list into their City section too.
-    useEffect(() => {
-        if (auth.scopeLevel === 'Province') setSelectedProvinceId(auth.scopeProvinceId);
-        if (auth.scopeLevel === 'City') setSelectedCityId(auth.scopeCityId);
-    }, [auth.scopeLevel, auth.scopeProvinceId, auth.scopeCityId]);
 
     const provinceOptions = auth.scopeLevel === 'Mastery'
         ? allProvinces
@@ -41,7 +38,11 @@ export function useGeoSections() {
         // Province/City-scoped users see it locked (or hidden) to their own region.
         provinceLocked: auth.scopeLevel !== 'Mastery',
         cityLocked: auth.scopeLevel === 'City',
-        selectedProvinceId, setSelectedProvinceId, provinceOptions,
-        selectedCityId, setSelectedCityId, cityOptions,
+        selectedProvinceId,
+        setSelectedProvinceId: setMasteryProvinceId,
+        provinceOptions,
+        selectedCityId,
+        setSelectedCityId: setUnscopedCityId,
+        cityOptions,
     };
 }

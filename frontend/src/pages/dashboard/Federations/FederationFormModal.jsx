@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Modal, Form, Input, Select, message } from 'antd';
 import { useCreateFederation, useFederations } from '../../../hooks/useFederations';
 import { useProvinces, useCities } from '../../../hooks/useLocations';
@@ -14,7 +14,13 @@ import { FEDERATION_CATEGORY_LABELS } from '../../../constants/labels';
 export default function FederationFormModal({ level, parentFederation, targetProvinceId, targetCityId, open, onClose }) {
     const [form] = Form.useForm();
     const auth = useAuth();
-    const [selectedProvinceId, setSelectedProvinceId] = useState(null);
+    const watchedProvinceId = Form.useWatch('provinceId', form);
+    const selectedProvinceId = watchedProvinceId ??
+        (auth.scopeLevel === 'Province'
+            ? auth.scopeProvinceId
+            : level === 'City'
+                ? parentFederation?.provinceId ?? targetProvinceId
+                : null);
     const createMutation = useCreateFederation();
     const { data: provinces } = useProvinces();
     const { data: cities } = useCities(selectedProvinceId);
@@ -39,15 +45,13 @@ export default function FederationFormModal({ level, parentFederation, targetPro
     useEffect(() => {
         if (open && level === 'Provincial' && !parentFederation && auth.scopeLevel === 'Province') {
             form.setFieldValue('provinceId', auth.scopeProvinceId);
-            setSelectedProvinceId(auth.scopeProvinceId);
         }
         if (open && level === 'Provincial' && parentFederation && auth.scopeLevel === 'Province') {
             form.setFieldValue('provinceId', auth.scopeProvinceId);
-            setSelectedProvinceId(auth.scopeProvinceId);
         }
         if (open && level === 'City') {
             const province = parentFederation?.provinceId ?? targetProvinceId;
-            setSelectedProvinceId(province);
+            form.setFieldValue('provinceId', province);
             if (auth.scopeLevel === 'City') form.setFieldValue('cityId', auth.scopeCityId);
             else if (targetCityId) form.setFieldValue('cityId', targetCityId);
         }
@@ -127,7 +131,6 @@ export default function FederationFormModal({ level, parentFederation, targetPro
                         <Select
                             disabled={auth.scopeLevel === 'Province'}
                             options={provinceOptions?.map((p) => ({ value: p.id, label: p.name }))}
-                            onChange={setSelectedProvinceId}
                         />
                     </Form.Item>
                 )}
@@ -139,6 +142,11 @@ export default function FederationFormModal({ level, parentFederation, targetPro
                             disabled={!selectedProvinceId}
                             options={provincialOptions?.map((f) => ({ value: f.id, label: f.displayName }))}
                         />
+                    </Form.Item>
+                )}
+                {level === 'City' && (
+                    <Form.Item name="provinceId" hidden>
+                        <Input />
                     </Form.Item>
                 )}
                 {level === 'City' && (
