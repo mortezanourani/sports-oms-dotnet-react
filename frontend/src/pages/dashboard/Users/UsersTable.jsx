@@ -41,10 +41,10 @@ export default function UsersList({ filters }) {
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [passwordUser, setPasswordUser] = useState(null);
   const [editingId, setEditingId] = useState(null);
-  const [scopeLevel, setScopeLevel] = useState('Mastery');
-  const [selectedProvinceId, setSelectedProvinceId] = useState(null);
   const [form] = Form.useForm();
   const [passwordForm] = Form.useForm();
+  const scopeLevel = Form.useWatch('scopeLevel', form) || 'Mastery';
+  const selectedProvinceId = Form.useWatch('scopeProvinceId', form);
 
   const { data: users, isLoading } = useUsers(filters);
   const { data: editingUser, isFetching: isFetchingEditing } = useUser(editingId);
@@ -61,15 +61,11 @@ export default function UsersList({ filters }) {
   useEffect(() => {
     if (editingId && editingUser) {
       form.setFieldsValue(editingUser);
-      setScopeLevel(editingUser.scopeLevel);
-      setSelectedProvinceId(editingUser.scopeProvinceId);
     }
   }, [editingId, editingUser, form]);
 
   const openCreate = () => {
     setEditingId(null);
-    setScopeLevel('Mastery');
-    setSelectedProvinceId(null);
     form.resetFields();
     setModalOpen(true);
   };
@@ -218,11 +214,9 @@ export default function UsersList({ filters }) {
               options={Object.entries(SCOPE_LEVEL_LABELS)
                   .filter(([value]) => geo.provinceLocked ? value !== 'Mastery' : true)
                   .map(([value, label]) => ({ value, label }))}
-              onChange={(val) => {
-                setScopeLevel(val);
+              onChange={() => {
                 form.setFieldValue('scopeProvinceId', undefined);
                 form.setFieldValue('scopeCityId', undefined);
-                setSelectedProvinceId(null);
               }}
             />
           </Form.Item>
@@ -239,8 +233,7 @@ export default function UsersList({ filters }) {
             >
               <Select
                 options={provinces?.map((p) => ({ value: p.id, label: p.name }))}
-                onChange={(val) => {
-                  setSelectedProvinceId(val);
+                onChange={() => {
                   form.setFieldValue('scopeCityId', undefined);
                 }}
               />

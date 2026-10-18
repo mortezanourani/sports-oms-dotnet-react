@@ -16,11 +16,14 @@ export default function ChampionsTable({ filters }) {
     const [modalOpen, setModalOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [medalsModalChampionId, setMedalsModalChampionId] = useState(null);
-    const [selectedProvinceId, setSelectedProvinceId] = useState(null);
+    const [provinceSelection, setProvinceSelection] = useState(undefined);
     const [form] = Form.useForm();
 
     const { data, isLoading } = useChampions({ page, pageSize: 20, ...filters });
     const { data: editingChampion, isFetching: isFetchingEditing } = useChampion(editingId);
+    const selectedProvinceId = provinceSelection !== undefined
+        ? provinceSelection
+        : editingChampion?.id === editingId ? editingChampion?.provinceId : null;
     const { data: federations } = useFederations();
     const { data: provinces } = useProvinces();
     const { data: cities } = useCities(selectedProvinceId);
@@ -35,18 +38,18 @@ export default function ChampionsTable({ filters }) {
                 ...editingChampion,
                 birthDate: toSolarPickerValue(editingChampion.birthDate),
             });
-            setSelectedProvinceId(editingChampion.provinceId);
         }
     }, [editingId, editingChampion, form]);
 
     const openCreate = () => {
         setEditingId(null);
-        setSelectedProvinceId(null);
+        setProvinceSelection(null);
         form.resetFields();
         setModalOpen(true);
     };
 
     const openEdit = (record) => {
+        setProvinceSelection(undefined);
         setEditingId(record.id);
         setModalOpen(true);
     };
@@ -135,7 +138,7 @@ export default function ChampionsTable({ filters }) {
                             placeholder="انتخاب استان" allowClear
                             value={selectedProvinceId}
                             options={provinces?.map((p) => ({ value: p.id, label: p.name }))}
-                            onChange={(val) => { setSelectedProvinceId(val); form.setFieldValue('cityId', undefined); }}
+                            onChange={(val) => { setProvinceSelection(val); form.setFieldValue('cityId', undefined); }}
                         />
                     </Form.Item>
                     <Form.Item name="cityId" label="شهر">
