@@ -1,7 +1,9 @@
-import { Modal, Table, Form, Select, DatePicker, Button, message, Tag, Divider } from 'antd';
+import { Modal, Table, Form, Select, Button, message, Tag, Divider } from 'antd';
 import { useFederations } from '../../../hooks/useFederations';
 import { useAssignFederationPosition, useUserFederationPositions } from '../../../hooks/useUsers';
 import { FEDERATION_POSITION_LABELS } from '../../../constants/labels';
+import SolarDatePicker from '../../../components/SolarDatePicker';
+import { formatSolarDate, toUtcDateTime } from '../../../utils/dates';
 
 export default function AssignPositionModal({ user, open, onClose }) {
   const [form] = Form.useForm();
@@ -15,8 +17,8 @@ export default function AssignPositionModal({ user, open, onClose }) {
         userId: user.id,
         payload: {
           ...values,
-          startDate: values.startDate.format('YYYY-MM-DD'),
-          endDate: values.endDate ? values.endDate.format('YYYY-MM-DD') : null,
+          startDate: toUtcDateTime(values.startDate),
+          endDate: toUtcDateTime(values.endDate),
         },
       });
       message.success('سمت با موفقیت تخصیص داده شد');
@@ -29,10 +31,10 @@ export default function AssignPositionModal({ user, open, onClose }) {
   const columns = [
     { title: 'فدراسیون', dataIndex: 'federationName' },
     { title: 'سمت', dataIndex: 'position', render: (v) => FEDERATION_POSITION_LABELS[v] || v },
-    { title: 'از تاریخ', dataIndex: 'startDate' },
+    { title: 'از تاریخ', dataIndex: 'startDate', render: formatSolarDate },
     {
       title: 'تا تاریخ', dataIndex: 'endDate',
-      render: (v) => (v ? v : <Tag color="green">در حال حاضر</Tag>),
+      render: (v) => (v ? formatSolarDate(v) : <Tag color="green">در حال حاضر</Tag>),
     },
   ];
 
@@ -58,7 +60,7 @@ export default function AssignPositionModal({ user, open, onClose }) {
           <Select options={Object.entries(FEDERATION_POSITION_LABELS).map(([value, label]) => ({ value, label }))} />
         </Form.Item>
         <Form.Item name="startDate" label="تاریخ شروع" rules={[{ required: true }]}>
-          <DatePicker style={{ width: '100%' }} />
+          <SolarDatePicker />
         </Form.Item>
         <Button type="primary" htmlType="submit" loading={assignMutation.isPending}>تخصیص سمت</Button>
       </Form>

@@ -1,6 +1,8 @@
-import { Modal, Form, Input, Select, DatePicker, message } from 'antd';
+import { Modal, Form, Input, Select, message } from 'antd';
 import { useCreateFederationRep } from '../../../hooks/useFederations';
 import { FEDERATION_POSITION_LABELS } from '../../../constants/labels';
+import SolarDatePicker from '../../../components/SolarDatePicker';
+import { toUtcDateTime } from '../../../utils/dates';
 
 export default function AddPositionModal({ federation, open, onClose }) {
     const [form] = Form.useForm();
@@ -15,8 +17,8 @@ export default function AddPositionModal({ federation, open, onClose }) {
                     firstName: values.firstName,
                     lastName: values.lastName,
                     position: values.position,
-                    startDate: values.startDate.format('YYYY-MM-DD'),
-                    endDate: values.endDate ? values.endDate.format('YYYY-MM-DD') : null
+                    startDate: toUtcDateTime(values.startDate),
+                    endDate: toUtcDateTime(values.endDate)
                 }
             });
 
@@ -99,10 +101,8 @@ export default function AddPositionModal({ federation, open, onClose }) {
                     label="تاریخ شروع" 
                     rules={[{ required: true, message: 'لطفاً تاریخ شروع را انتخاب کنید' }]}
                 >
-                    <DatePicker 
-                        format="YYYY-MM-DD" 
+                    <SolarDatePicker
                         placeholder="تاریخ شروع" 
-                        style={{ width: '100%' }} 
                     />
                 </Form.Item>
 
@@ -110,10 +110,8 @@ export default function AddPositionModal({ federation, open, onClose }) {
                     name="endDate" 
                     label="تاریخ پایان (اختیاری)" 
                 >
-                    <DatePicker 
-                        format="YYYY-MM-DD" 
+                    <SolarDatePicker
                         placeholder="تاریخ پایان (اختیاری)" 
-                        style={{ width: '100%' }} 
                     />
                 </Form.Item>
 

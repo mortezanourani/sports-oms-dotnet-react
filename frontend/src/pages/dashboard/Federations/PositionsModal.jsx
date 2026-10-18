@@ -3,6 +3,7 @@ import { Modal, Table, Tag, Button } from 'antd';
 import { useFederationPositions } from '../../../hooks/useFederations';
 import { FEDERATION_POSITION_LABELS } from '../../../constants/labels';
 import AddPositionModal from './AddPositionModal';
+import { formatSolarDate } from '../../../utils/dates';
 
 export default function PositionsModal({ federation, open, onClose }) {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -12,10 +13,10 @@ export default function PositionsModal({ federation, open, onClose }) {
   const columns = [
     { title: 'سمت', dataIndex: 'position', render: (v) => FEDERATION_POSITION_LABELS[v] || v },
     { title: 'نام', dataIndex: 'userFullName' },
-    { title: 'از تاریخ', dataIndex: 'startDate' },
+    { title: 'از تاریخ', dataIndex: 'startDate', render: formatSolarDate },
     {
       title: 'تا تاریخ', dataIndex: 'endDate',
-      render: (v) => (v ? v : <Tag color="green">در حال حاضر</Tag>),
+      render: (v) => (v ? formatSolarDate(v) : <Tag color="green">در حال حاضر</Tag>),
     },
   ];
 

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Table, Button, Space, Popconfirm, message, Modal, Form, Input, Select, DatePicker } from 'antd';
+import { Table, Button, Space, Popconfirm, message, Modal, Form, Input, Select } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, TrophyOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
 import {
     useChampions, useChampion, useCreateChampion, useUpdateChampion, useDeleteChampion,
 } from '../../../hooks/useChampions';
@@ -9,6 +8,8 @@ import { useFederations } from '../../../hooks/useFederations';
 import { useProvinces, useCities } from '../../../hooks/useLocations';
 import { GENDER_LABELS } from '../../../constants/labels';
 import MedalsModal from './MedalsModal';
+import SolarDatePicker from '../../../components/SolarDatePicker';
+import { toSolarPickerValue, toUtcDateTime } from '../../../utils/dates';
 
 export default function ChampionsTable({ filters }) {
     const [page, setPage] = useState(1);
@@ -32,7 +33,7 @@ export default function ChampionsTable({ filters }) {
         if (editingId && editingChampion) {
             form.setFieldsValue({
                 ...editingChampion,
-                birthDate: editingChampion.birthDate ? dayjs(editingChampion.birthDate) : null,
+                birthDate: toSolarPickerValue(editingChampion.birthDate),
             });
             setSelectedProvinceId(editingChampion.provinceId);
         }
@@ -51,7 +52,7 @@ export default function ChampionsTable({ filters }) {
     };
 
     const handleFinish = async (values) => {
-        const payload = { ...values, birthDate: values.birthDate ? values.birthDate.format('YYYY-MM-DD') : null };
+        const payload = { ...values, birthDate: toUtcDateTime(values.birthDate) };
         try {
             if (editingId) {
                 await updateMutation.mutateAsync({ id: editingId, payload });
@@ -124,7 +125,7 @@ export default function ChampionsTable({ filters }) {
                         <Select options={Object.entries(GENDER_LABELS).map(([value, label]) => ({ value, label }))} />
                     </Form.Item>
                     <Form.Item name="birthDate" label="تاریخ تولد">
-                        <DatePicker style={{ width: '100%' }} />
+                        <SolarDatePicker />
                     </Form.Item>
                     <Form.Item name="federationId" label="فدراسیون" rules={[{ required: true }]}>
                         <Select options={federations?.map((f) => ({ value: f.id, label: f.name }))} />
