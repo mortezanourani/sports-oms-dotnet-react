@@ -12,7 +12,10 @@ export default function PositionsModal({ federation, open, onClose }) {
 
   const columns = [
     { title: 'سمت', dataIndex: 'position', render: (v) => FEDERATION_POSITION_LABELS[v] || v },
-    { title: 'نام', dataIndex: 'userFullName' },
+    {
+      title: 'نام',
+      render: (_, record) => [record.userFirstName, record.userLastName].filter(Boolean).join(' ') || '—',
+    },
     { title: 'از تاریخ', dataIndex: 'startDate', render: formatSolarDate },
     {
       title: 'تا تاریخ', dataIndex: 'endDate',
@@ -47,7 +50,7 @@ export default function PositionsModal({ federation, open, onClose }) {
         <Table
           rowKey="id"
           columns={columns}
-          dataSource={positions}
+          dataSource={positions?.slice().sort((a, b) => new Date(b.startDate) - new Date(a.startDate))}
           loading={isLoading}
           pagination={false}
           locale={{ emptyText: 'سابقه‌ای ثبت نشده است' }}
