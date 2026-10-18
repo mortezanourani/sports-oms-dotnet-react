@@ -16,6 +16,8 @@ export default function FacilitiesList({ facilityTypes, title }) {
     const geo = useGeoSections();
     const { role } = useAuth();
     const [page, setPage] = useState(1);
+    const [msyPage, setMsyPage] = useState(1);
+    const [govPage, setGovPage] = useState(1);
     const [importModalOpen, setImportModalOpen] = useState(false);
     const [fileList, setFileList] = useState([]);
     const [selectedFile, setSelectedFile] = useState(null);
@@ -28,6 +30,7 @@ export default function FacilitiesList({ facilityTypes, title }) {
     const canImportMsyGov = facilityTypes.some((type) => ['Msy', 'Gov'].includes(type)) &&
         ['Admin', 'Manager', 'M88Manager', 'M88Officer'].includes(role);
     const isImportPending = privateImportMutation.isPending || msyGovImportMutation.isPending;
+    const hasSeparateMsyGovLists = facilityTypes.includes('Msy') && facilityTypes.includes('Gov');
 
     const handleDownloadTemplate = async () => {
         try {
@@ -80,67 +83,110 @@ export default function FacilitiesList({ facilityTypes, title }) {
         geo.setSelectedProvinceId(provinceId);
         geo.setSelectedCityId(null);
         setPage(1);
+        setMsyPage(1);
+        setGovPage(1);
     };
 
     const handleCityChange = (cityId) => {
         geo.setSelectedCityId(cityId);
         setPage(1);
+        setMsyPage(1);
+        setGovPage(1);
     };
+
+    const locationFilters = (facilityTypeFilter) => (
+        <Space wrap>
+            {geo.auth.scopeLevel !== 'City' && (
+                <>
+                    {geo.auth.scopeLevel === 'Mastery' && (
+                        <Select
+                            placeholder="فیلتر بر اساس استان"
+                            allowClear
+                            style={{ width: 220 }}
+                            value={geo.selectedProvinceId}
+                            onChange={handleProvinceChange}
+                            options={geo.provinceOptions?.map((p) => ({ value: p.id, label: p.name }))}
+                        />
+                    )}
+                    <Select
+                        placeholder={geo.selectedProvinceId ? 'فیلتر بر اساس شهر' : 'ابتدا استان را انتخاب کنید'}
+                        allowClear
+                        style={{ width: 220 }}
+                        disabled={!geo.selectedProvinceId}
+                        value={geo.selectedCityId}
+                        onChange={handleCityChange}
+                        options={geo.cityOptions?.map((c) => ({ value: c.id, label: c.name }))}
+                    />
+                </>
+            )}
+            {facilityTypeFilter}
+        </Space>
+    );
 
     return (
         <div>
             <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>{title}</Title>
-            <FacilitiesTable
-                filters={{
-                    provinceId: geo.selectedProvinceId,
-                    cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId,
-                }}
-                facilityTypes={facilityTypes}
-                page={page}
-                onPageChange={setPage}
-                renderActions={(canImportPrivate || canImportMsyGov) && (
-                    <>
-                        {canImportPrivate && (
-                            <Button icon={<UploadOutlined />} onClick={() => openImportModal('private')}>
-                                وارد کردن اماکن خصوصی
-                            </Button>
-                        )}
-                        {canImportMsyGov && (
+            {hasSeparateMsyGovLists ? (
+                <>
+                    <Title level={5}>اماکن وزارت ورزش و جوانان (MSY)</Title>
+                    <FacilitiesTable
+                        filters={{
+                            provinceId: geo.selectedProvinceId,
+                            cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId,
+                        }}
+                        facilityTypes={['Msy']}
+                        page={msyPage}
+                        onPageChange={setMsyPage}
+                        hideFacilityTypeColumn
+                        creationFacilityTypes={['Msy', 'Gov']}
+                        renderActions={canImportMsyGov && (
                             <Button icon={<UploadOutlined />} onClick={() => openImportModal('msy-gov')}>
                                 وارد کردن اماکن MSY و دولتی
                             </Button>
                         )}
-                    </>
-                )}
-                renderLocationFilters={(facilityTypeFilter) => (
-                    <Space wrap>
-                        {geo.auth.scopeLevel !== 'City' && (
-                            <>
-                                {geo.auth.scopeLevel === 'Mastery' && (
-                                    <Select
-                                        placeholder="فیلتر بر اساس استان"
-                                        allowClear
-                                        style={{ width: 220 }}
-                                        value={geo.selectedProvinceId}
-                                        onChange={handleProvinceChange}
-                                        options={geo.provinceOptions?.map((p) => ({ value: p.id, label: p.name }))}
-                                    />
-                                )}
-                                <Select
-                                    placeholder={geo.selectedProvinceId ? 'فیلتر بر اساس شهر' : 'ابتدا استان را انتخاب کنید'}
-                                    allowClear
-                                    style={{ width: 220 }}
-                                    disabled={!geo.selectedProvinceId}
-                                    value={geo.selectedCityId}
-                                    onChange={handleCityChange}
-                                    options={geo.cityOptions?.map((c) => ({ value: c.id, label: c.name }))}
-                                />
-                            </>
-                        )}
-                        {facilityTypeFilter}
-                    </Space>
-                )}
-            />
+                        renderLocationFilters={locationFilters}
+                    />
+                    <div style={{ marginTop: 32 }}>
+                        <Title level={5}>اماکن دولتی سایر ارگان‌ها (GOV)</Title>
+                        <FacilitiesTable
+                            filters={{
+                                provinceId: geo.selectedProvinceId,
+                                cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId,
+                            }}
+                            facilityTypes={['Gov']}
+                            page={govPage}
+                            onPageChange={setGovPage}
+                            hideFacilityTypeColumn
+                            showCreateButton={false}
+                        />
+                    </div>
+                </>
+            ) : (
+                <FacilitiesTable
+                    filters={{
+                        provinceId: geo.selectedProvinceId,
+                        cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId,
+                    }}
+                    facilityTypes={facilityTypes}
+                    page={page}
+                    onPageChange={setPage}
+                    renderActions={(canImportPrivate || canImportMsyGov) && (
+                        <>
+                            {canImportPrivate && (
+                                <Button icon={<UploadOutlined />} onClick={() => openImportModal('private')}>
+                                    وارد کردن اماکن خصوصی
+                                </Button>
+                            )}
+                            {canImportMsyGov && (
+                                <Button icon={<UploadOutlined />} onClick={() => openImportModal('msy-gov')}>
+                                    وارد کردن اماکن MSY و دولتی
+                                </Button>
+                            )}
+                        </>
+                    )}
+                    renderLocationFilters={locationFilters}
+                />
+            )}
             {(canImportPrivate || canImportMsyGov) && (
                 <>
                     <Modal
