@@ -401,26 +401,7 @@ namespace Backend.Controllers
             if (cityId.HasValue) qs = qs.Where(c => c.CityId == cityId.Value);
             else if (provinceId.HasValue) qs = qs.Where(c => c.City != null && c.City.ProvinceId == provinceId.Value);
 
-            // Apply scope filtering based on role
-            var role = User.Role();
-            var myScopeLevel = User.ScopeLevel();
-            var myProvinceId = User.ScopeProvinceId();
-            var myCityId = User.ScopeCityId();
-
-            if (role is "Admin" or "Manager" or "SportsManager" or "SportsOfficer")
-            {
-                if (myScopeLevel == "Province")
-                {
-                    qs = qs.Where(c =>
-                        (c.Federation.Level == FederationLevel.Provincial && c.Federation.ProvinceId == myProvinceId) ||
-                        (c.City != null && c.City.ProvinceId == myProvinceId));
-                }
-                else if (myScopeLevel == "City")
-                {
-                    qs = qs.Where(c => c.CityId == myCityId);
-                }
-                // Mastery has no filter (can see all)
-            }
+            qs = ApplyChampionListScopeFilter(qs);
 
             var count = await qs.CountAsync();
             var items = await qs
@@ -435,6 +416,43 @@ namespace Backend.Controllers
                 .ToListAsync();
 
             return Ok(new { items, count });
+        }
+
+        [HttpGet("federations")]
+        public async Task<IActionResult> ListFederations()
+        {
+            var federations = await ApplyChampionListScopeFilter(_db.Champions)
+                .Select(c => new ChampionFederationOptionDto(c.FederationId, c.Federation.Name!))
+                .Distinct()
+                .OrderBy(federation => federation.Name)
+                .ToListAsync();
+
+            return Ok(federations);
+        }
+
+        private IQueryable<Champion> ApplyChampionListScopeFilter(IQueryable<Champion> query)
+        {
+            var role = User.Role();
+            var myScopeLevel = User.ScopeLevel();
+            var myProvinceId = User.ScopeProvinceId();
+            var myCityId = User.ScopeCityId();
+
+            if (role is "Admin" or "Manager" or "SportsManager" or "SportsOfficer")
+            {
+                if (myScopeLevel == "Province")
+                {
+                    query = query.Where(c =>
+                        (c.Federation.Level == FederationLevel.Provincial && c.Federation.ProvinceId == myProvinceId) ||
+                        (c.City != null && c.City.ProvinceId == myProvinceId));
+                }
+                else if (myScopeLevel == "City")
+                {
+                    query = query.Where(c => c.CityId == myCityId);
+                }
+                // Mastery has no filter (can see all)
+            }
+
+            return query;
         }
 
         [HttpGet("{id}")]
