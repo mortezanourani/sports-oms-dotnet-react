@@ -64,58 +64,60 @@ export default function ChampionsList() {
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>قهرمانان</Title>
-                {canImport && (
+            </div>
+            <ChampionsTable
+                key={`${filters.provinceId || ''}:${filters.cityId || ''}:${filters.federationId || ''}`}
+                filters={filters}
+                filtersToolbar={(
+                    <Space wrap>
+                        {isMasteryScope && (
+                            <Select
+                                allowClear
+                                placeholder="همه استان‌ها"
+                                style={{ width: 220 }}
+                                value={geo.selectedProvinceId || undefined}
+                                onChange={(provinceId) => {
+                                    geo.setSelectedCityId(null);
+                                    geo.setSelectedProvinceId(provinceId || null);
+                                }}
+                                options={geo.provinceOptions?.map((province) => ({
+                                    value: province.id,
+                                    label: province.name,
+                                }))}
+                            />
+                        )}
+                        {(isMasteryScope || isProvinceScope) && (
+                            <Select
+                                allowClear
+                                placeholder="همه شهرها"
+                                style={{ width: 220 }}
+                                disabled={isMasteryScope && !geo.selectedProvinceId}
+                                value={geo.selectedCityId || undefined}
+                                onChange={(cityId) => geo.setSelectedCityId(cityId || null)}
+                                options={geo.cityOptions?.map((city) => ({
+                                    value: city.id,
+                                    label: city.name,
+                                }))}
+                            />
+                        )}
+                        <Select
+                            allowClear
+                            placeholder="همه فدراسیون‌ها"
+                            style={{ width: 260 }}
+                            value={selectedFederationId || undefined}
+                            onChange={(federationId) => setSelectedFederationId(federationId || null)}
+                            options={championFederations?.map((federation) => ({
+                                value: federation.id,
+                                label: federation.name,
+                            }))}
+                        />
+                    </Space>
+                )}
+                headerActions={canImport && (
                     <Button icon={<UploadOutlined />} onClick={() => setImportModalOpen(true)}>
                         وارد کردن قهرمانان
                     </Button>
                 )}
-            </div>
-            <Space wrap style={{ marginBottom: 16 }}>
-                {isMasteryScope && (
-                    <Select
-                        allowClear
-                        placeholder="همه استان‌ها"
-                        style={{ width: 220 }}
-                        value={geo.selectedProvinceId || undefined}
-                        onChange={(provinceId) => {
-                            geo.setSelectedCityId(null);
-                            geo.setSelectedProvinceId(provinceId || null);
-                        }}
-                        options={geo.provinceOptions?.map((province) => ({
-                            value: province.id,
-                            label: province.name,
-                        }))}
-                    />
-                )}
-                {(isMasteryScope || isProvinceScope) && (
-                    <Select
-                        allowClear
-                        placeholder="همه شهرها"
-                        style={{ width: 220 }}
-                        disabled={isMasteryScope && !geo.selectedProvinceId}
-                        value={geo.selectedCityId || undefined}
-                        onChange={(cityId) => geo.setSelectedCityId(cityId || null)}
-                        options={geo.cityOptions?.map((city) => ({
-                            value: city.id,
-                            label: city.name,
-                        }))}
-                    />
-                )}
-                <Select
-                    allowClear
-                    placeholder="همه فدراسیون‌ها"
-                    style={{ width: 260 }}
-                    value={selectedFederationId || undefined}
-                    onChange={(federationId) => setSelectedFederationId(federationId || null)}
-                    options={championFederations?.map((federation) => ({
-                        value: federation.id,
-                        label: federation.name,
-                    }))}
-                />
-            </Space>
-            <ChampionsTable
-                key={`${filters.provinceId || ''}:${filters.cityId || ''}:${filters.federationId || ''}`}
-                filters={filters}
             />
             <Modal
                 title="وارد کردن قهرمانان و مدال‌ها"
