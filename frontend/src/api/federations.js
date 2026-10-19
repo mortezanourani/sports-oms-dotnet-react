@@ -1,6 +1,8 @@
 import api from './axios';
 
 export const getFederations = async (params) => (await api.get('/federations', { params })).data;
+export const getFederationParentOptions = async (params) =>
+    (await api.get('/federations/parent-options', { params })).data;
 export const getFederation = async (id) => (await api.get(`/federations/${id}`)).data;
 export const createFederation = async (payload) => (await api.post('/federations', payload)).data;
 export const importFederations = async (file) => {
