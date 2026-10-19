@@ -813,6 +813,18 @@ namespace Backend.Controllers
 
             federation.Name = dto.Name;
             federation.Category = category;
+            var parentIds = new List<Guid> { federation.Id };
+            while (parentIds.Count > 0)
+            {
+                var children = await _db.Federations
+                    .Where(child => child.ParentFederationId.HasValue &&
+                        parentIds.Contains(child.ParentFederationId.Value))
+                    .ToListAsync();
+                foreach (var child in children)
+                    child.Category = category;
+                parentIds = children.Select(child => child.Id).ToList();
+            }
+
             await _db.SaveChangesAsync();
             return Ok(new { success = true });
         }
