@@ -155,6 +155,61 @@ public class MessageRecipientAuthorizationTests
     }
 
     [Fact]
+    public async Task FederationRepRecipientOptions_IncludePositionAndProperFederationNameForEachLevel()
+    {
+        await using var context = CreateContext();
+        var province = new Province { Id = Guid.NewGuid(), Name = "تهران" };
+        var city = new City { Id = Guid.NewGuid(), Name = "شهر نمونه", Province = province };
+        var nationalFederation = new Federation
+        {
+            Id = Guid.NewGuid(),
+            Name = "بسکتبال",
+            Level = FederationLevel.National
+        };
+        var provincialFederation = new Federation
+        {
+            Id = Guid.NewGuid(),
+            Level = FederationLevel.Provincial,
+            ParentFederation = nationalFederation,
+            Province = province
+        };
+        var cityFederation = new Federation
+        {
+            Id = Guid.NewGuid(),
+            Level = FederationLevel.City,
+            ParentFederation = provincialFederation,
+            City = city
+        };
+        var sender = CreateUser(UserRole.Manager, ScopeLevel.Mastery);
+        var nationalRep = CreateUser(UserRole.FederationRep, ScopeLevel.Mastery);
+        var provincialRep = CreateUser(
+            UserRole.FederationRep, ScopeLevel.Province, provinceId: province.Id);
+        var cityRep = CreateUser(
+            UserRole.FederationRep, ScopeLevel.City, provinceId: province.Id, cityId: city.Id);
+        context.AddRange(
+            province, city, nationalFederation, provincialFederation, cityFederation,
+            sender, nationalRep, provincialRep, cityRep);
+        context.FederationPositions.AddRange(
+            ActivePosition(nationalFederation, nationalRep, FederationPositionType.President),
+            ActivePosition(provincialFederation, provincialRep, FederationPositionType.Miss),
+            ActivePosition(cityFederation, cityRep, FederationPositionType.Vice));
+        await context.SaveChangesAsync();
+
+        var result = Assert.IsType<OkObjectResult>(
+            await CreateController(context, sender.Id).RecipientOptions("FederationRep"));
+        var recipients = Assert.IsAssignableFrom<IEnumerable<RecipientOptionDto>>(result.Value)
+            .ToDictionary(recipient => recipient.Id);
+
+        Assert.Equal(["رئیس فدراسیون بسکتبال"], recipients[nationalRep.Id].FederationPositions);
+        Assert.Equal(
+            ["نایب رئیس هیات بسکتبال استان تهران"],
+            recipients[provincialRep.Id].FederationPositions);
+        Assert.Equal(
+            ["دبیر هیات بسکتبال شهرستان شهر نمونه"],
+            recipients[cityRep.Id].FederationPositions);
+    }
+
+    [Fact]
     public async Task FederationPresident_CanMessageOwnScopeAdminManagerAndSportsManager()
     {
         await using var context = CreateContext();
