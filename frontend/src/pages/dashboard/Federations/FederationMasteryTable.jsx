@@ -1,18 +1,16 @@
 import { useState } from 'react';
 import { Table, Button, Popconfirm, message, Space, Tag, Form, Modal, Input } from 'antd';
-import { PlusOutlined, DeleteOutlined, HistoryOutlined, EditOutlined } from '@ant-design/icons';
+import { DeleteOutlined, HistoryOutlined, EditOutlined } from '@ant-design/icons';
 import { useFederations, useDeleteFederation, useUpdateFederation } from '../../../hooks/useFederations';
 import { useAuth } from '../../../hooks/useAuth';
 import { canManageMastery } from '../../../utils/federationPermissions';
 import { FEDERATION_CATEGORY_LABELS } from '../../../constants/labels';
-import FederationFormModal from './FederationFormModal';
 import PositionsModal from './PositionsModal';
 
-export default function FederationsList() {
+export default function FederationMasteryTable() {
     const auth = useAuth();
     const { data: federations, isLoading } = useFederations({ level: 'National' });
     const deleteMutation = useDeleteFederation();
-    const [createOpen, setCreateOpen] = useState(false);
     const [positionsFederation, setPositionsFederation] = useState(null);
     const [editingFederation, setEditingFederation] = useState(null);
     const [editForm] = Form.useForm();
@@ -65,12 +63,9 @@ export default function FederationsList() {
 
     return (
         <div>
-            {canManageMastery(auth) && (
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>افزودن فدراسیون کشوری</Button>
-            )}
-
             <Table
                 rowKey="id" columns={columns} dataSource={federations} loading={isLoading} pagination={false}
+                locale={{ emptyText: 'فدراسیونی یافت نشد' }}
             />
 
             <Modal
@@ -84,7 +79,6 @@ export default function FederationsList() {
                     </Form.Item>
                 </Form>
             </Modal>
-            <FederationFormModal level="National" open={createOpen} onClose={() => setCreateOpen(false)} />
             <PositionsModal federation={positionsFederation} open={!!positionsFederation} onClose={() => setPositionsFederation(null)} />
         </div>
     );

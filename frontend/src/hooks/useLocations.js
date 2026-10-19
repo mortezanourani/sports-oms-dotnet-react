@@ -48,6 +48,13 @@ export function useCities(provinceId) {
     });
 }
 
+export function useAllCities() {
+    return useQuery({
+        queryKey: ['cities', 'all'],
+        queryFn: () => api.getCities(),
+    });
+}
+
 export function useCreateCity() {
     const qc = useQueryClient();
     return useMutation({

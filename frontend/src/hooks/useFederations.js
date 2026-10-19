@@ -5,6 +5,17 @@ export function useFederations(params) {
   return useQuery({ queryKey: ['federations', params], queryFn: () => api.getFederations(params) });
 }
 
+export function useFederationParentOptions(level, provinceId) {
+  return useQuery({
+    queryKey: ['federationParentOptions', level, provinceId],
+    queryFn: () => api.getFederationParentOptions({
+      level,
+      ...(provinceId ? { provinceId } : {}),
+    }),
+    enabled: !!level && (level !== 'Provincial' || !!provinceId),
+  });
+}
+
 export function useImportFederations() {
   const qc = useQueryClient();
   return useMutation({

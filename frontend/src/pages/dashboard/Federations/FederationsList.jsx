@@ -1,13 +1,15 @@
-import { Tabs, Select, Typography, Button, Space, Upload, Modal, List, message } from 'antd';
+import { Select, Typography, Button, Space, Upload, Modal, List, message, Divider } from 'antd';
 import { useState } from 'react';
-import { DownloadOutlined, UploadOutlined } from '@ant-design/icons';
+import { DownloadOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import { downloadFederationsImportTemplate } from '../../../api/federations';
 import { useImportFederations } from '../../../hooks/useFederations';
+import { useAllCities } from '../../../hooks/useLocations';
 import { useAuth } from '../../../hooks/useAuth';
 import { useGeoSections } from '../../../hooks/useGeoSections';
-import FederationMasteryTable from './FederationMasteryTable'; // the previous nested-expandable table, renamed
+import { canManageCity, canManageMastery, canManageProvincial } from '../../../utils/federationPermissions';
+import FederationMasteryTable from './FederationMasteryTable';
 import FederationsFlatTable from './FederationsFlatTable';
-import FederationFormModal from './FederationFormModal';
+import FederationCreateModal from './FederationCreateModal';
 
 const { Title } = Typography;
 
@@ -21,6 +23,21 @@ export default function FederationsList() {
     const [selectedFile, setSelectedFile] = useState(null);
     const [importResult, setImportResult] = useState(null);
     const importMutation = useImportFederations();
+    const { data: allCities } = useAllCities();
+
+    const canCreateFederation =
+        canManageMastery(geo.auth) ||
+        canManageProvincial(geo.auth, geo.auth.scopeProvinceId) ||
+        canManageCity(geo.auth, geo.auth.scopeCityId, geo.auth.scopeProvinceId);
+    const provinceId = geo.auth.scopeLevel === 'Province'
+        ? geo.auth.scopeProvinceId
+        : geo.selectedProvinceId;
+    const cityId = geo.auth.scopeLevel === 'City'
+        ? geo.auth.scopeCityId
+        : geo.selectedCityId;
+    const cityOptions = geo.auth.scopeLevel === 'Province'
+        ? allCities?.filter((city) => city.provinceId === geo.auth.scopeProvinceId)
+        : allCities;
 
     const handleDownloadTemplate = async () => {
         try {
@@ -51,62 +68,76 @@ export default function FederationsList() {
         }
     };
 
-    const items = [
-        geo.showMastery && {
-            key: 'mastery', label: 'کل کشور',
-            children: <FederationMasteryTable />,
-        },
-        geo.showProvinceSection && {
-            key: 'province', label: 'استان',
-            children: (
-                <>
-                    <Select
-                        placeholder="انتخاب استان" style={{ width: 220, marginBottom: 16 }}
-                        disabled={geo.provinceLocked}
-                        value={geo.selectedProvinceId}
-                        onChange={geo.setSelectedProvinceId}
-                        options={geo.provinceOptions?.map((p) => ({ value: p.id, label: p.name }))}
-                    />
-                    <FederationsFlatTable level="Provincial" provinceId={geo.selectedProvinceId} />
-                </>
-            ),
-        },
-        {
-            key: 'city', label: 'شهر',
-            children: (
-                <>
-                    {!geo.cityLocked && (
-                        <Select
-                            placeholder="ابتدا استان را در بخش «استان» انتخاب کنید"
-                            style={{ width: 220, marginBottom: 16 }}
-                            disabled={!geo.selectedProvinceId}
-                            value={geo.selectedCityId}
-                            onChange={geo.setSelectedCityId}
-                            options={geo.cityOptions?.map((c) => ({ value: c.id, label: c.name }))}
-                        />
-                    )}
-                    <FederationsFlatTable
-                        level="City"
-                        provinceId={geo.selectedProvinceId}
-                        cityId={geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId}
-                    />
-                </>
-            ),
-        },
-    ].filter(Boolean);
-
     return (
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>فدراسیون‌ها</Title>
-                {canImport && (
-                    <Button icon={<UploadOutlined />} onClick={() => setImportModalOpen(true)}>
-                        وارد کردن فدراسیون‌ها
-                    </Button>
-                )}
+                <Space>
+                    {canCreateFederation && (
+                        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+                            افزودن فدراسیون
+                        </Button>
+                    )}
+                    {canImport && (
+                        <Button icon={<UploadOutlined />} onClick={() => setImportModalOpen(true)}>
+                            وارد کردن فدراسیون‌ها
+                        </Button>
+                    )}
+                </Space>
             </div>
-            <Tabs items={items} />
-            <FederationFormModal level="National" open={createOpen} onClose={() => setCreateOpen(false)} />
+
+            {geo.showMastery && (
+                <>
+                    <Title level={5}>فدراسیون‌های کشوری</Title>
+                    <FederationMasteryTable />
+                    <Divider />
+                </>
+            )}
+
+            {geo.showProvinceSection && (
+                <>
+                    <Title level={5}>فدراسیون‌های استانی</Title>
+                    {geo.showMastery && (
+                        <Select
+                            allowClear
+                            placeholder="همه استان‌ها"
+                            style={{ width: 240, marginBottom: 16 }}
+                            value={geo.selectedProvinceId || undefined}
+                            onChange={(selectedId) => geo.setSelectedProvinceId(selectedId || null)}
+                            options={geo.provinceOptions?.map((province) => ({
+                                value: province.id,
+                                label: province.name,
+                            }))}
+                        />
+                    )}
+                    <FederationsFlatTable level="Provincial" provinceId={provinceId} />
+                    <Divider />
+                </>
+            )}
+
+            <Title level={5}>فدراسیون‌های شهری</Title>
+            {geo.auth.scopeLevel !== 'City' && (
+                <Select
+                    allowClear
+                    placeholder="همه شهرها"
+                    style={{ width: 240, marginBottom: 16 }}
+                    value={geo.selectedCityId || undefined}
+                    onChange={(selectedId) => geo.setSelectedCityId(selectedId || null)}
+                    options={cityOptions?.map((city) => ({
+                        value: city.id,
+                        label: geo.auth.scopeLevel === 'Mastery'
+                            ? `${city.name} - ${city.provinceName}`
+                            : city.name,
+                    }))}
+                />
+            )}
+            <FederationsFlatTable
+                level="City"
+                provinceId={geo.auth.scopeLevel === 'City' ? geo.auth.scopeProvinceId : undefined}
+                cityId={cityId}
+            />
+
+            <FederationCreateModal open={createOpen} onClose={() => setCreateOpen(false)} />
             <Modal
                 title="وارد کردن فدراسیون‌ها"
                 open={importModalOpen}
