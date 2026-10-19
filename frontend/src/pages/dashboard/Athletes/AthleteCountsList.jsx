@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Tabs, Select, Typography, Button, Space, Upload, Modal, List, message } from 'antd';
-import { DownloadOutlined, UploadOutlined } from '@ant-design/icons';
+import { Select, Typography, Button, Space, Upload, Modal, List, message } from 'antd';
+import { DownloadOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import { downloadAthleteCountsImportTemplate } from '../../../api/athleteCounts';
-import { useImportAthleteCounts } from '../../../hooks/useAthleteCounts';
+import { useAthleteCountSummaryFilters, useImportAthleteCounts } from '../../../hooks/useAthleteCounts';
 import { useAuth } from '../../../hooks/useAuth';
 import { useGeoSections } from '../../../hooks/useGeoSections';
+import { PERSIAN_MONTHS } from '../../../constants/labels';
 import AthleteCountsTable from './AthleteCountsTable';
 
 const { Title } = Typography;
@@ -12,12 +13,25 @@ const { Title } = Typography;
 export default function AthleteCountsList() {
   const geo = useGeoSections();
   const { role } = useAuth();
+  const canManageCounts = ['Admin', 'Manager', 'InsuranceOfficer'].includes(role);
   const canImport = ['Admin', 'Manager', 'InsuranceOfficer'].includes(role);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [fileList, setFileList] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [importResult, setImportResult] = useState(null);
+  const [selectedYear, setSelectedYear] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(null);
   const importMutation = useImportAthleteCounts();
+  const summaryLocationFilters = {
+    ...(geo.selectedProvinceId ? { provinceId: geo.selectedProvinceId } : {}),
+    ...((geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId)
+      ? { cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId }
+      : {}),
+  };
+  const { data: summaryFilterOptions } = useAthleteCountSummaryFilters({
+    ...summaryLocationFilters,
+    ...(selectedYear ? { year: selectedYear } : {}),
+  });
 
   const handleDownloadTemplate = async () => {
     try {
@@ -48,54 +62,99 @@ export default function AthleteCountsList() {
     }
   };
 
-  const items = [
-    geo.showMastery && { key: 'mastery', label: 'کل کشور', children: <AthleteCountsTable filters={{}} /> },
-    geo.showProvinceSection && {
-      key: 'province', label: 'استان',
-      children: (
-          <>
-            <Select
-                placeholder="انتخاب استان" style={{ width: 220, marginBottom: 16 }}
-                disabled={geo.provinceLocked}
-                value={geo.selectedProvinceId}
-                onChange={geo.setSelectedProvinceId}
-                options={geo.provinceOptions?.map((p) => ({ value: p.id, label: p.name }))}
-            />
-            <AthleteCountsTable filters={{ provinceId: geo.selectedProvinceId }} />
-          </>
-      ),
-    },
-    {
-      key: 'city', label: 'شهر',
-      children: (
-          <>
-            {!geo.cityLocked && (
-                <Select
-                    placeholder="ابتدا استان را در بخش «استان» انتخاب کنید"
-                    style={{ width: 220, marginBottom: 16 }}
-                    disabled={!geo.selectedProvinceId}
-                    value={geo.selectedCityId}
-                    onChange={geo.setSelectedCityId}
-                    options={geo.cityOptions?.map((c) => ({ value: c.id, label: c.name }))}
-                />
-            )}
-            <AthleteCountsTable filters={{ cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId }} />
-          </>
-      ),
-    },
-  ].filter(Boolean);
+  const handleProvinceChange = (provinceId) => {
+    geo.setSelectedProvinceId(provinceId || null);
+    geo.setSelectedCityId(null);
+    setSelectedYear(null);
+    setSelectedMonth(null);
+  };
+
+  const handleCityChange = (cityId) => {
+    geo.setSelectedCityId(cityId || null);
+    setSelectedYear(null);
+    setSelectedMonth(null);
+  };
+
+  const handleYearChange = (year) => {
+    setSelectedYear(year || null);
+    setSelectedMonth(null);
+  };
+
+  const filters = {
+    ...summaryLocationFilters,
+    ...(selectedYear ? { year: selectedYear } : {}),
+    ...(selectedMonth ? { month: selectedMonth } : {}),
+  };
+
+  const renderToolbar = ({ onAdd }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+      <Space wrap>
+        <Select
+          allowClear
+          placeholder="فیلتر بر اساس استان"
+          style={{ width: 220 }}
+          disabled={geo.provinceLocked}
+          value={geo.selectedProvinceId || undefined}
+          onChange={handleProvinceChange}
+          options={geo.provinceOptions?.map((province) => ({ value: province.id, label: province.name }))}
+        />
+        <Select
+          allowClear
+          placeholder={geo.selectedProvinceId ? 'فیلتر بر اساس شهر' : 'ابتدا استان را انتخاب کنید'}
+          style={{ width: 220 }}
+          disabled={!geo.selectedProvinceId || geo.cityLocked}
+          value={(geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId) || undefined}
+          onChange={handleCityChange}
+          options={geo.cityOptions?.map((city) => ({ value: city.id, label: city.name }))}
+        />
+        <Select
+          allowClear
+          placeholder="فیلتر بر اساس سال"
+          style={{ width: 150 }}
+          value={selectedYear || undefined}
+          onChange={handleYearChange}
+          options={summaryFilterOptions?.years?.map((year) => ({ value: year, label: year }))}
+        />
+        <Select
+          allowClear
+          placeholder={selectedYear ? 'فیلتر بر اساس ماه' : 'ابتدا سال را انتخاب کنید'}
+          style={{ width: 170 }}
+          disabled={!selectedYear}
+          value={selectedMonth || undefined}
+          onChange={(month) => setSelectedMonth(month || null)}
+          options={summaryFilterOptions?.months?.map((month) => ({
+            value: month,
+            label: PERSIAN_MONTHS[month - 1],
+          }))}
+        />
+      </Space>
+      <Space wrap>
+        {canManageCounts && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={onAdd}>
+            ثبت آمار جدید
+          </Button>
+        )}
+        {canImport && (
+          <Button icon={<UploadOutlined />} onClick={() => setImportModalOpen(true)}>
+            وارد کردن آمار
+          </Button>
+        )}
+      </Space>
+    </div>
+  );
 
   return (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Title level={4} style={{ marginTop: 0, color: '#00498d' }}>آمار ورزشکاران</Title>
-          {canImport && (
-            <Button icon={<UploadOutlined />} onClick={() => setImportModalOpen(true)}>
-              وارد کردن آمار
-            </Button>
-          )}
         </div>
-        <Tabs items={items} />
+        <AthleteCountsTable
+          filters={filters}
+          renderToolbar={renderToolbar}
+          canEdit={canManageCounts && Boolean(
+            filters.provinceId && filters.cityId && filters.year && filters.month
+          )}
+        />
         <Modal
           title="وارد کردن آمار ورزشکاران"
           open={importModalOpen}

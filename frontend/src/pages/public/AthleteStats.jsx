@@ -17,9 +17,15 @@ export default function AthleteStats() {
         if (!rows) return [];
         const grouped = {};
         for (const row of rows) {
-            const key = `${row.month}__${row.gender}`;
-            grouped[key] = grouped[key] || { month: PERSIAN_MONTHS[row.month - 1], gender: row.gender, count: 0 };
-            grouped[key].count += row.count;
+            for (const [gender, count] of [['Male', row.maleCount], ['Female', row.femaleCount]]) {
+                const key = `${row.month}__${gender}`;
+                grouped[key] = grouped[key] || {
+                    month: PERSIAN_MONTHS[row.month - 1],
+                    gender: GENDER_LABELS[gender],
+                    count: 0,
+                };
+                grouped[key].count += count;
+            }
         }
         return Object.values(grouped);
     }, [rows]);
@@ -29,8 +35,8 @@ export default function AthleteStats() {
         { title: 'استان', dataIndex: 'provinceName' },
         { title: 'شهر', dataIndex: 'cityName' },
         { title: 'ماه', dataIndex: 'month', render: (v) => PERSIAN_MONTHS[v - 1] },
-        { title: 'جنسیت', dataIndex: 'gender', render: (v) => GENDER_LABELS[v] || v },
-        { title: 'تعداد', dataIndex: 'count' },
+        { title: 'تعداد آقایان', dataIndex: 'maleCount' },
+        { title: 'تعداد بانوان', dataIndex: 'femaleCount' },
     ];
 
     return (
