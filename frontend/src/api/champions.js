@@ -5,6 +5,11 @@ export const getChampions = async (params) => {
     return data;
 };
 
+export const getChampionFederations = async () => {
+    const { data } = await api.get('/champions/federations');
+    return data;
+};
+
 export const getChampion = async (id) => {
     const { data } = await api.get(`/champions/${id}`);
     return data;

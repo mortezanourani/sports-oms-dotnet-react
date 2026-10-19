@@ -5,6 +5,13 @@ export function useChampions(params) {
     return useQuery({ queryKey: ['champions', params], queryFn: () => api.getChampions(params) });
 }
 
+export function useChampionFederations() {
+    return useQuery({
+        queryKey: ['champions', 'federations'],
+        queryFn: api.getChampionFederations,
+    });
+}
+
 export function useChampion(id) {
     return useQuery({
         queryKey: ['champions', id],
