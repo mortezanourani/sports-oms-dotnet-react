@@ -19,6 +19,8 @@
         Guid? CityId, string? CityName,
         bool HasChildren);
 
+    public record FederationParentOptionDto(Guid Id, string DisplayName);
+
     public record FederationRepAssignDto(
         string Username,
         string? Password,

@@ -518,18 +518,16 @@ namespace Backend.Controllers
         {
             var myScopeLevel = User.ScopeLevel();
             var myProvinceId = User.ScopeProvinceId();
-            var myCityId = User.ScopeCityId();
             
             if (myScopeLevel == "Province")
             {
-                // Province users can see federations in their province (Provincial + Cities)
                 query = query.Where(f => 
                     (f.Level == FederationLevel.Provincial && f.ProvinceId == myProvinceId) ||
                     (f.Level == FederationLevel.City && f.ProvinceId == myProvinceId));
             }
             else if (myScopeLevel == "City")
             {
-                // City users can only see their own city federation
+                var myCityId = User.ScopeCityId();
                 query = query.Where(f => f.Level == FederationLevel.City && f.CityId == myCityId);
             }
             // Mastery users can see everything (no filter needed)
@@ -543,6 +541,51 @@ namespace Backend.Controllers
             var parentName = f.ParentFederation?.Name ?? "";
             var regionName = f.Level == FederationLevel.Provincial ? f.Province?.Name : f.City?.Name;
             return $"{parentName} - {regionName}";
+        }
+
+        [HttpGet("parent-options")]
+        public async Task<IActionResult> ListParentOptions(string level, Guid? provinceId)
+        {
+            if (!Enum.TryParse<FederationLevel>(level, out var levelEnum) ||
+                levelEnum is not (FederationLevel.National or FederationLevel.Provincial))
+                return BadRequest(new { detail = "سطح فدراسیون والد نامعتبر است" });
+
+            var myScopeLevel = User.ScopeLevel();
+            var myProvinceId = User.ScopeProvinceId();
+            var query = _db.Federations
+                .Include(f => f.ParentFederation)
+                .Include(f => f.Province)
+                .AsQueryable();
+
+            if (levelEnum == FederationLevel.National)
+            {
+                if (myScopeLevel == "City")
+                    return Forbid();
+
+                query = query.Where(f => f.Level == FederationLevel.National);
+            }
+            else
+            {
+                if (myScopeLevel is "Province" or "City")
+                {
+                    if (provinceId.HasValue && provinceId != myProvinceId)
+                        return Forbid();
+                    provinceId = myProvinceId;
+                }
+
+                query = query.Where(f => f.Level == FederationLevel.Provincial);
+                if (provinceId.HasValue)
+                    query = query.Where(f => f.ProvinceId == provinceId.Value);
+            }
+
+            var federations = await query
+                .OrderBy(f => f.Name ?? f.Province!.Name)
+                .ToListAsync();
+            var options = federations
+                .Select(f => new FederationParentOptionDto(f.Id, ComposeDisplayName(f)))
+                .ToList();
+
+            return Ok(options);
         }
 
         [HttpGet]
