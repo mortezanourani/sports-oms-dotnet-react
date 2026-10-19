@@ -5,6 +5,20 @@ export function useAthleteCounts(params) {
   return useQuery({ queryKey: ['athleteCounts', params], queryFn: () => api.getAthleteCounts(params) });
 }
 
+export function useAthleteCountSummary(params) {
+  return useQuery({
+    queryKey: ['athleteCountSummary', params],
+    queryFn: () => api.getAthleteCountSummary(params),
+  });
+}
+
+export function useAthleteCountSummaryFilters(params) {
+  return useQuery({
+    queryKey: ['athleteCountSummaryFilters', params],
+    queryFn: () => api.getAthleteCountSummaryFilters(params),
+  });
+}
+
 export function useAthleteCount(id) {
   return useQuery({
     queryKey: ['athleteCounts', id],
@@ -17,7 +31,11 @@ export function useImportAthleteCounts() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.importAthleteCounts,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['athleteCounts'] }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['athleteCounts'] }),
+      qc.invalidateQueries({ queryKey: ['athleteCountSummary'] }),
+      qc.invalidateQueries({ queryKey: ['athleteCountSummaryFilters'] }),
+    ]),
   });
 }
 
@@ -25,7 +43,11 @@ export function useCreateAthleteCount() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.createAthleteCount,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['athleteCounts'] }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['athleteCounts'] }),
+      qc.invalidateQueries({ queryKey: ['athleteCountSummary'] }),
+      qc.invalidateQueries({ queryKey: ['athleteCountSummaryFilters'] }),
+    ]),
   });
 }
 
@@ -33,7 +55,11 @@ export function useUpdateAthleteCount() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.updateAthleteCount,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['athleteCounts'] }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['athleteCounts'] }),
+      qc.invalidateQueries({ queryKey: ['athleteCountSummary'] }),
+      qc.invalidateQueries({ queryKey: ['athleteCountSummaryFilters'] }),
+    ]),
   });
 }
 
@@ -41,6 +67,10 @@ export function useDeleteAthleteCount() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: api.deleteAthleteCount,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['athleteCounts'] }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ['athleteCounts'] }),
+      qc.invalidateQueries({ queryKey: ['athleteCountSummary'] }),
+      qc.invalidateQueries({ queryKey: ['athleteCountSummaryFilters'] }),
+    ]),
   });
 }
