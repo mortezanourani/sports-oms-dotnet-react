@@ -48,10 +48,11 @@ export function useCities(provinceId) {
     });
 }
 
-export function useAllCities() {
+export function useAllCities(enabled = true) {
     return useQuery({
         queryKey: ['cities', 'all'],
         queryFn: () => api.getCities(),
+        enabled,
     });
 }
 

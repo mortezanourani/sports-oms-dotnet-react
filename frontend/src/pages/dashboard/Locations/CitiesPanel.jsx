@@ -1,10 +1,13 @@
 import { useState } from 'react';
-import { Table, Button, Space, Popconfirm, message, Modal, Form, Input } from 'antd';
+import { Table, Button, Space, Popconfirm, message, Modal, Form, Input, Typography } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import { useCities, useCreateCity, useUpdateCity, useDeleteCity } from '../../../hooks/useLocations';
+import { useAllCities, useCities, useCreateCity, useUpdateCity, useDeleteCity } from '../../../hooks/useLocations';
 
-export default function CitiesPanel({ province }) {
-    const { data: cities, isLoading } = useCities(province.id);
+export default function CitiesPanel({ provinceId, provinces }) {
+    const { data: allCities, isLoading: isAllCitiesLoading } = useAllCities(!provinceId);
+    const { data: provinceCities, isLoading: isProvinceCitiesLoading } = useCities(provinceId);
+    const cities = provinceId ? provinceCities : allCities;
+    const isLoading = provinceId ? isProvinceCitiesLoading : isAllCitiesLoading;
     const [modalOpen, setModalOpen] = useState(false);
     const [editingCity, setEditingCity] = useState(null);
     const [form] = Form.useForm();
@@ -14,6 +17,7 @@ export default function CitiesPanel({ province }) {
     const deleteMutation = useDeleteCity();
 
     const openCreate = () => {
+        if (!provinceId) return;
         setEditingCity(null);
         form.resetFields();
         setModalOpen(true);
@@ -26,13 +30,7 @@ export default function CitiesPanel({ province }) {
     };
 
     const handleFinish = async (values) => {
-        // provinceId is always the CURRENT expanded province, not something
-        // the user picks in this small form — a city being managed from
-        // inside "Tehran"'s expanded panel is always being added to Tehran.
-        // Moving a city to a different province is an edge case better
-        // handled, if ever needed, from a dedicated city-management view,
-        // not this quick inline panel.
-        const payload = { provinceId: province.id, name: values.name };
+        const payload = { provinceId: editingCity?.provinceId || provinceId, name: values.name };
         try {
             if (editingCity) {
                 await updateMutation.mutateAsync({ id: editingCity.id, payload });
@@ -56,6 +54,7 @@ export default function CitiesPanel({ province }) {
     };
 
     const columns = [
+        ...(!provinceId ? [{ title: 'استان', dataIndex: 'provinceName', key: 'provinceName' }] : []),
         { title: 'نام شهر', dataIndex: 'name', key: 'name' },
         {
             title: 'عملیات', key: 'actions',
@@ -71,17 +70,26 @@ export default function CitiesPanel({ province }) {
     ];
 
     return (
-        <div style={{ padding: '8px 32px' }}>
-            <Button icon={<PlusOutlined />} size="small" onClick={openCreate} style={{ marginBottom: 12 }}>
-                افزودن شهر
-            </Button>
+        <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <Typography.Title level={5} style={{ margin: 0 }}>
+                    {provinces?.find((province) => province.id === provinceId)?.name || 'همه استان‌ها'}
+                </Typography.Title>
+                <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={openCreate}
+                    disabled={!provinceId}
+                >
+                    افزودن شهر
+                </Button>
+            </div>
             <Table
                 rowKey="id"
-                size="small"
                 columns={columns}
                 dataSource={cities}
                 loading={isLoading}
-                pagination={false}
+                pagination={{ pageSize: 10, showSizeChanger: false }}
             />
 
             <Modal
