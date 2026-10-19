@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { DownloadOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import { downloadFederationsImportTemplate } from '../../../api/federations';
 import { useImportFederations } from '../../../hooks/useFederations';
-import { useAllCities } from '../../../hooks/useLocations';
 import { useAuth } from '../../../hooks/useAuth';
 import { useGeoSections } from '../../../hooks/useGeoSections';
 import { canManageCity, canManageMastery, canManageProvincial } from '../../../utils/federationPermissions';
@@ -23,7 +22,6 @@ export default function FederationsList() {
     const [selectedFile, setSelectedFile] = useState(null);
     const [importResult, setImportResult] = useState(null);
     const importMutation = useImportFederations();
-    const { data: allCities } = useAllCities();
 
     const canCreateFederation =
         canManageMastery(geo.auth) ||
@@ -35,9 +33,6 @@ export default function FederationsList() {
     const cityId = geo.auth.scopeLevel === 'City'
         ? geo.auth.scopeCityId
         : geo.selectedCityId;
-    const cityOptions = geo.auth.scopeLevel === 'Province'
-        ? allCities?.filter((city) => city.provinceId === geo.auth.scopeProvinceId)
-        : allCities;
 
     const handleDownloadTemplate = async () => {
         try {
@@ -103,7 +98,10 @@ export default function FederationsList() {
                             placeholder="همه استان‌ها"
                             style={{ width: 240, marginBottom: 16 }}
                             value={geo.selectedProvinceId || undefined}
-                            onChange={(selectedId) => geo.setSelectedProvinceId(selectedId || null)}
+                            onChange={(selectedId) => {
+                                geo.setSelectedProvinceId(selectedId || null);
+                                geo.setSelectedCityId(null);
+                            }}
                             options={geo.provinceOptions?.map((province) => ({
                                 value: province.id,
                                 label: province.name,
@@ -121,9 +119,10 @@ export default function FederationsList() {
                     allowClear
                     placeholder="همه شهرها"
                     style={{ width: 240, marginBottom: 16 }}
+                    disabled={!provinceId}
                     value={geo.selectedCityId || undefined}
                     onChange={(selectedId) => geo.setSelectedCityId(selectedId || null)}
-                    options={cityOptions?.map((city) => ({
+                    options={geo.cityOptions?.map((city) => ({
                         value: city.id,
                         label: geo.auth.scopeLevel === 'Mastery'
                             ? `${city.name} - ${city.provinceName}`
@@ -133,7 +132,7 @@ export default function FederationsList() {
             )}
             <FederationsFlatTable
                 level="City"
-                provinceId={geo.auth.scopeLevel === 'City' ? geo.auth.scopeProvinceId : undefined}
+                provinceId={provinceId}
                 cityId={cityId}
             />
 

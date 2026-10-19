@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Table, Button, Popconfirm, message, Space, Tag, Form, Modal, Input } from 'antd';
+import { Table, Button, Popconfirm, message, Space, Tag, Form, Modal, Input, Select } from 'antd';
 import { DeleteOutlined, HistoryOutlined, EditOutlined } from '@ant-design/icons';
 import { useFederations, useDeleteFederation, useUpdateFederation } from '../../../hooks/useFederations';
 import { useAuth } from '../../../hooks/useAuth';
@@ -18,7 +18,7 @@ export default function FederationMasteryTable() {
 
     const openEdit = (record) => {
         setEditingFederation(record);
-        editForm.setFieldsValue({ name: record.displayName });
+        editForm.setFieldsValue({ name: record.displayName.replace(/^فدراسیون\s*/, ''), category: record.category || undefined });
     };
 
     const handleEditFinish = async (values) => {
@@ -76,6 +76,15 @@ export default function FederationMasteryTable() {
                 <Form form={editForm} layout="vertical" onFinish={handleEditFinish}>
                     <Form.Item name="name" label="نام فدراسیون" rules={[{ required: true }]}>
                         <Input />
+                    </Form.Item>
+                    <Form.Item name="category" label="دسته‌بندی">
+                        <Select
+                            allowClear
+                            placeholder="بدون دسته‌بندی"
+                            options={Object.entries(FEDERATION_CATEGORY_LABELS)
+                                .filter(([value]) => value !== 'Unknow')
+                                .map(([value, label]) => ({ value, label }))}
+                        />
                     </Form.Item>
                 </Form>
             </Modal>
