@@ -154,18 +154,17 @@ namespace Backend.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("city_id");
 
-                    b.Property<int>("Count")
-                        .HasColumnType("integer")
-                        .HasColumnName("count");
-
                     b.Property<Guid>("FederationId")
                         .HasColumnType("uuid")
                         .HasColumnName("federation_id");
 
-                    b.Property<string>("Gender")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("gender");
+                    b.Property<int>("FemaleCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("female_count");
+
+                    b.Property<int>("MaleCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("male_count");
 
                     b.Property<int>("Month")
                         .HasColumnType("integer")
@@ -181,9 +180,9 @@ namespace Backend.Data.Migrations
                     b.HasIndex("CityId")
                         .HasDatabaseName("ix_athlete_counts_city_id");
 
-                    b.HasIndex("FederationId", "CityId", "Year", "Month", "Gender")
+                    b.HasIndex("FederationId", "CityId", "Year", "Month")
                         .IsUnique()
-                        .HasDatabaseName("ix_athlete_counts_federation_id_city_id_year_month_gender");
+                        .HasDatabaseName("ix_athlete_counts_federation_id_city_id_year_month");
 
                     b.ToTable("athlete_counts", (string)null);
                 });

@@ -26,12 +26,11 @@ public class AthleteCountImportControllerTests
         var result = Assert.IsType<OkObjectResult>(await controller.Import(file));
 
         Assert.NotNull(result.Value);
-        var saved = await context.AthleteCounts.OrderBy(record => record.Gender).ToListAsync();
-        Assert.Equal(2, saved.Count);
-        Assert.All(saved, record => Assert.Equal(scope.Federation.Id, record.FederationId));
-        Assert.All(saved, record => Assert.Equal(scope.City.Id, record.CityId));
-        Assert.Contains(saved, record => record.Gender == Gender.Male && record.Count == 12);
-        Assert.Contains(saved, record => record.Gender == Gender.Female && record.Count == 8);
+        var saved = await context.AthleteCounts.SingleAsync();
+        Assert.Equal(scope.Federation.Id, saved.FederationId);
+        Assert.Equal(scope.City.Id, saved.CityId);
+        Assert.Equal(12, saved.MaleCount);
+        Assert.Equal(8, saved.FemaleCount);
     }
 
     [Fact]

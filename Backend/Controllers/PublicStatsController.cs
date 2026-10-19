@@ -75,7 +75,7 @@ namespace Backend.Controllers
             var stats = await qs
                 .Select(a => new PublicAthleteStatDto(
                     a.Federation.Name!, a.City.Province.Name, a.City.Name,
-                    a.Year, a.Month, a.Gender.ToString(), a.Count))
+                    a.Year, a.Month, a.MaleCount, a.FemaleCount))
                 .ToListAsync();
 
             return Ok(stats);
