@@ -1,4 +1,4 @@
-﻿using Backend.Data;
+using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
 using Backend.Services;
@@ -12,7 +12,7 @@ namespace Backend.Controllers
 {
     [ApiController]
     [Route("api/messages")]
-    [Authorize] // every action requires login; no role restrictions beyond that
+    [Authorize] // all actions require login; recipient permissions are checked when sending
     public class MessagesController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -190,8 +190,7 @@ namespace Backend.Controllers
         }
 
         // POST /api/messages
-        // Sends a new message to one or more recipients. No role restriction
-        // — every logged-in user can send, per the spec.
+        // Sends a message only to recipients allowed by the sender's role and scope.
         [HttpPost]
         public async Task<IActionResult> Send(MessageSendDto dto)
         {
@@ -201,30 +200,25 @@ namespace Backend.Controllers
             if (dto.RecipientIds == null || dto.RecipientIds.Count == 0)
                 return BadRequest(new { detail = "حداقل یک گیرنده باید انتخاب شود" });
 
-            // Confirm every submitted recipient ID actually corresponds to a
-            // real user — without this check, a typo'd or stale ID would
-            // silently create a MessageRecipient row pointing at nothing
-            // meaningful, and that recipient would never see the message
-            // with no error ever surfacing to the sender.
-            var validRecipientIds = await _db.Users
-                .Where(u => dto.RecipientIds.Contains(u.Id))
-                .Select(u => u.Id)
-                .ToListAsync();
+            var sender = await _db.Users.FindAsync(CurrentUserId);
+            if (sender == null) return Unauthorized();
 
-            var invalidIds = dto.RecipientIds.Except(validRecipientIds).ToList();
-            if (invalidIds.Count > 0)
-                return BadRequest(new { detail = "برخی از گیرندگان انتخاب‌شده معتبر نیستند" });
+            var allowedRecipientIds = await GetAllowedRecipientIdsAsync(
+                sender, dto.RecipientType, dto.ScopeLevel);
+            var recipientIds = dto.RecipientIds.Distinct().ToList();
+            if (recipientIds.Any(id => !allowedRecipientIds.Contains(id)))
+                return BadRequest(new { detail = "انتخاب یک یا چند گیرنده مجاز نیست" });
 
             var message = new Message
             {
-                SenderId = CurrentUserId,
+                SenderId = sender.Id,
                 Subject = dto.Subject,
                 Body = dto.Body
             };
 
             _db.Messages.Add(message);
 
-            foreach (var recipientId in validRecipientIds.Distinct())
+            foreach (var recipientId in recipientIds)
             {
                 _db.MessageRecipients.Add(new MessageRecipient
                 {
@@ -259,24 +253,277 @@ namespace Backend.Controllers
         }
 
         // GET /api/messages/recipients
-        // Populates the "select recipients" picker in the compose UI. No
-        // role restriction, since every user needs to be able to message
-        // others — but deliberately excludes the current user themselves
-        // from their own recipient list, since messaging yourself has no
-        // real use case here.
+        // Returns recipients allowed for the selected receiver type and scope.
         [HttpGet("recipients")]
-        public async Task<IActionResult> RecipientOptions()
+        public async Task<IActionResult> RecipientOptions(
+            [FromQuery] string recipientType,
+            [FromQuery] string? scopeLevel = null)
         {
-            var myId = CurrentUserId;
+            var sender = await _db.Users.FindAsync(CurrentUserId);
+            if (sender == null) return Unauthorized();
+
+            var allowedRecipientIds = await GetAllowedRecipientIdsAsync(
+                sender, recipientType, scopeLevel);
 
             var users = await _db.Users
-                .Where(u => u.Id != myId)
+                .Where(u => allowedRecipientIds.Contains(u.Id))
                 .OrderBy(u => u.FirstName)
                 .ThenBy(u => u.LastName)
-                .Select(u => new RecipientOptionDto(u.Id, GetDisplayName(u), u.Role.ToString()))
+                .Select(u => new RecipientOptionDto(
+                    u.Id,
+                    GetDisplayName(u),
+                    u.Role.ToString(),
+                    u.ScopeLevel.ToString(),
+                    u.ScopeProvince != null ? u.ScopeProvince.Name : null,
+                    u.ScopeCity != null ? u.ScopeCity.Name : null))
                 .ToListAsync();
 
             return Ok(users);
         }
+
+        private async Task<List<Guid>> GetAllowedRecipientIdsAsync(
+            ApplicationUser sender, string recipientType, string? scopeLevel)
+        {
+            if (recipientType == "MainRole")
+            {
+                if (sender.Role == UserRole.FederationRep)
+                    return await GetFederationPresidentMainRoleRecipientsAsync(sender);
+
+                if (!Enum.TryParse<ScopeLevel>(scopeLevel, out var recipientScope) ||
+                    !Enum.IsDefined(recipientScope))
+                    return [];
+
+                var candidates = await _db.Users
+                    .Where(user => user.Id != sender.Id && user.ScopeLevel == recipientScope)
+                    .ToListAsync();
+
+                return candidates
+                    .Where(user => CanMessageMainRoleUser(sender, user))
+                    .Select(user => user.Id)
+                    .ToList();
+            }
+
+            if (recipientType != "FederationRep")
+                return [];
+
+            var today = TehranDateTime.TodayUtc;
+            var senderPositions = await _db.FederationPositions
+                .Include(position => position.Federation)
+                .Where(position => position.UserId == sender.Id &&
+                                   position.User.Role == UserRole.FederationRep &&
+                                   position.StartDate <= today)
+                .ToListAsync();
+            senderPositions = senderPositions
+                .Where(position => IsActivePosition(position, today))
+                .ToList();
+
+            if (sender.Role != UserRole.FederationRep)
+            {
+                if (sender.Role is not (UserRole.Admin or UserRole.Manager or UserRole.SportsManager))
+                    return [];
+
+                var positions = await _db.FederationPositions
+                    .Include(position => position.User)
+                    .Include(position => position.Federation)
+                    .ThenInclude(federation => federation.City)
+                    .Where(position =>
+                        position.User.Role == UserRole.FederationRep &&
+                        position.StartDate <= today)
+                    .ToListAsync();
+
+                return positions
+                    .Where(position =>
+                        IsActivePosition(position, today) &&
+                        IsFederationWithinGeographicScope(position.Federation, sender) &&
+                        (sender.Role != UserRole.SportsManager ||
+                         position.Position == FederationPositionType.President))
+                    .Select(position => position.UserId)
+                    .Where(id => id != sender.Id)
+                    .Distinct()
+                    .ToList();
+            }
+
+            var senderFederationIds = senderPositions
+                .Select(position => position.FederationId)
+                .Distinct()
+                .ToList();
+            if (senderFederationIds.Count == 0) return [];
+
+            var allowedIds = new HashSet<Guid>();
+            var sameFederationPositions = await GetActivePositionsAsync(
+                _db.FederationPositions
+                    .Include(position => position.User)
+                    .Where(position =>
+                        senderFederationIds.Contains(position.FederationId) &&
+                        position.User.Role == UserRole.FederationRep &&
+                        position.StartDate <= today),
+                today);
+
+            foreach (var position in sameFederationPositions)
+                if (position.UserId != sender.Id)
+                    allowedIds.Add(position.UserId);
+
+            var presidentFederationIds = senderPositions
+                .Where(position => position.Position == FederationPositionType.President)
+                .Select(position => position.FederationId)
+                .Distinct()
+                .ToList();
+            if (presidentFederationIds.Count == 0) return allowedIds.ToList();
+
+            var adjacentFederationIds = senderPositions
+                .Where(position => presidentFederationIds.Contains(position.FederationId))
+                .Select(position => position.Federation.ParentFederationId)
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
+                .ToHashSet();
+
+            var childFederationIds = await _db.Federations
+                .Where(federation =>
+                    federation.ParentFederationId.HasValue &&
+                    presidentFederationIds.Contains(federation.ParentFederationId.Value))
+                .Select(federation => federation.Id)
+                .ToListAsync();
+            adjacentFederationIds.UnionWith(childFederationIds);
+
+            if (adjacentFederationIds.Count == 0) return allowedIds.ToList();
+
+            var adjacentPresidentPositions = await GetActivePositionsAsync(
+                _db.FederationPositions
+                    .Include(position => position.User)
+                    .Where(position =>
+                        adjacentFederationIds.Contains(position.FederationId) &&
+                        position.Position == FederationPositionType.President &&
+                        position.User.Role == UserRole.FederationRep &&
+                        position.StartDate <= today),
+                today);
+            foreach (var position in adjacentPresidentPositions)
+                if (position.UserId != sender.Id)
+                    allowedIds.Add(position.UserId);
+
+            return allowedIds.ToList();
+        }
+
+        private async Task<List<Guid>> GetFederationPresidentMainRoleRecipientsAsync(
+            ApplicationUser sender)
+        {
+            var today = TehranDateTime.TodayUtc;
+            var positions = await _db.FederationPositions
+                .Include(position => position.Federation)
+                .Where(position =>
+                    position.UserId == sender.Id &&
+                    position.User.Role == UserRole.FederationRep &&
+                    position.Position == FederationPositionType.President &&
+                    position.StartDate <= today)
+                .ToListAsync();
+            var hasActivePresidentPosition = positions.Any(position => IsActivePosition(position, today));
+            if (!hasActivePresidentPosition) return [];
+
+            var users = await _db.Users
+                .Where(user =>
+                    user.Id != sender.Id &&
+                    (user.Role == UserRole.Admin ||
+                     user.Role == UserRole.Manager ||
+                     user.Role == UserRole.SportsManager))
+                .ToListAsync();
+
+            return users
+                .Where(user => IsSameGeographicScope(user, sender))
+                .Select(user => user.Id)
+                .ToList();
+        }
+
+        private static bool CanMessageMainRoleUser(ApplicationUser sender, ApplicationUser recipient)
+        {
+            if (recipient.Role == UserRole.FederationRep) return false;
+
+            if (sender.Role == UserRole.FederationRep)
+                return false;
+
+            var isManagerOrAdmin = sender.Role is UserRole.Manager or UserRole.Admin;
+            var isOfficer = sender.Role is UserRole.SportsOfficer or UserRole.M5Officer or
+                UserRole.M88Officer or UserRole.HumanResourceOfficer;
+            var isOfficerRecipientExclusion =
+                recipient.Role == UserRole.Admin || IsManagerRole(recipient.Role);
+            var sameOrDescendantScope = IsSameGeographicScope(recipient, sender) ||
+                                        IsGeographicDescendantScope(recipient, sender);
+
+            if (isOfficer && isOfficerRecipientExclusion)
+                return false;
+
+            if (sameOrDescendantScope)
+                return true;
+
+            if (!IsAdjacentGeographicScope(recipient, sender))
+                return false;
+
+            if (isManagerOrAdmin)
+                return recipient.Role is UserRole.Manager or UserRole.Admin;
+
+            return recipient.Role == sender.Role &&
+                   sender.Role is UserRole.SportsManager or UserRole.M5Manager or
+                       UserRole.M88Manager or UserRole.HumanResourceManager or
+                       UserRole.InsuranceOfficer;
+        }
+
+        private static bool IsManagerRole(UserRole role) =>
+            role is UserRole.Manager or UserRole.SportsManager or UserRole.M5Manager or
+                UserRole.M88Manager or UserRole.HumanResourceManager;
+
+        private static bool IsSameGeographicScope(ApplicationUser recipient, ApplicationUser sender) =>
+            recipient.ScopeLevel == sender.ScopeLevel &&
+            sender.ScopeLevel switch
+            {
+                ScopeLevel.Mastery => true,
+                ScopeLevel.Province => sender.ScopeProvinceId.HasValue &&
+                                       recipient.ScopeProvinceId == sender.ScopeProvinceId,
+                ScopeLevel.City => sender.ScopeCityId.HasValue &&
+                                   recipient.ScopeCityId == sender.ScopeCityId,
+                _ => false
+            };
+
+        private static bool IsGeographicDescendantScope(ApplicationUser recipient, ApplicationUser sender) =>
+            sender.ScopeLevel == ScopeLevel.Province &&
+            recipient.ScopeLevel == ScopeLevel.City &&
+            sender.ScopeProvinceId.HasValue &&
+            recipient.ScopeProvinceId == sender.ScopeProvinceId;
+
+        private static bool IsAdjacentGeographicScope(ApplicationUser recipient, ApplicationUser sender) =>
+            (sender.ScopeLevel == ScopeLevel.Mastery && recipient.ScopeLevel == ScopeLevel.Province) ||
+            (sender.ScopeLevel == ScopeLevel.Province && recipient.ScopeLevel == ScopeLevel.Mastery) ||
+            (sender.ScopeLevel == ScopeLevel.Province &&
+             recipient.ScopeLevel == ScopeLevel.City &&
+             sender.ScopeProvinceId.HasValue &&
+             recipient.ScopeProvinceId == sender.ScopeProvinceId) ||
+            (sender.ScopeLevel == ScopeLevel.City &&
+             recipient.ScopeLevel == ScopeLevel.Province &&
+             sender.ScopeProvinceId.HasValue &&
+             recipient.ScopeProvinceId == sender.ScopeProvinceId);
+
+        private static bool IsFederationWithinGeographicScope(
+            Federation federation, ApplicationUser sender) =>
+            sender.ScopeLevel switch
+            {
+                ScopeLevel.Mastery => true,
+                ScopeLevel.Province => sender.ScopeProvinceId.HasValue &&
+                    (federation.Level == FederationLevel.Provincial &&
+                     federation.ProvinceId == sender.ScopeProvinceId ||
+                     federation.Level == FederationLevel.City &&
+                     federation.City?.ProvinceId == sender.ScopeProvinceId),
+                ScopeLevel.City => sender.ScopeCityId.HasValue &&
+                    federation.Level == FederationLevel.City &&
+                    federation.CityId == sender.ScopeCityId,
+                _ => false
+            };
+
+        private async Task<List<FederationPosition>> GetActivePositionsAsync(
+            IQueryable<FederationPosition> query, DateTime today)
+        {
+            var positions = await query.ToListAsync();
+            return positions.Where(position => IsActivePosition(position, today)).ToList();
+        }
+
+        private static bool IsActivePosition(FederationPosition position, DateTime today) =>
+            (position.EndDate ?? FederationPositionService.GetTermEndDate(position.StartDate)) > today;
+
     }
 }

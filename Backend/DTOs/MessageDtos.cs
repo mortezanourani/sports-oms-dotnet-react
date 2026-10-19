@@ -1,6 +1,7 @@
 ﻿namespace Backend.DTOs
 {
-    public record MessageSendDto(string? Subject, string Body, List<Guid> RecipientIds);
+    public record MessageSendDto(
+        string? Subject, string Body, List<Guid> RecipientIds, string RecipientType, string? ScopeLevel);
     // Used in inbox/sent list views — no full body text, keeps the list
     // response light. A list of 50 messages each carrying full body text
     // (which could include long report content) would be unnecessarily
@@ -20,7 +21,7 @@
 
     public record MessageAttachmentOutDto(Guid Id, string FileName, DateTime UploadedAt);
 
-    // A simple lookup DTO for populating the recipient picker in the compose
-    // UI — deliberately minimal, just enough to display and select a person.
-    public record RecipientOptionDto(Guid Id, string FullName, string Role);
+    public record RecipientOptionDto(
+        Guid Id, string FullName, string Role, string ScopeLevel,
+        string? ProvinceName, string? CityName);
 }
