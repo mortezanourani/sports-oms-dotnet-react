@@ -138,11 +138,13 @@ export default function ComposeModal({ open, onClose }) {
                         placeholder="انتخاب گیرندگان"
                         options={recipients?.map((r) => ({
                             value: r.id,
-                            label: `${r.fullName} (${[
-                                ROLE_LABELS[r.role] || r.role,
-                                SCOPE_LEVEL_LABELS[r.scopeLevel] || r.scopeLevel,
-                                r.provinceName || r.cityName,
-                            ].filter(Boolean).join(' ')})`,
+                            label: r.role === 'FederationRep' && r.federationPositions.length
+                                ? `${r.fullName} (${r.federationPositions.join('، ')})`
+                                : `${r.fullName} (${[
+                                    ROLE_LABELS[r.role] || r.role,
+                                    SCOPE_LEVEL_LABELS[r.scopeLevel] || r.scopeLevel,
+                                    r.provinceName || r.cityName,
+                                ].filter(Boolean).join(' ')})`,
                         }))}
                         optionFilterProp="label"
                     />
