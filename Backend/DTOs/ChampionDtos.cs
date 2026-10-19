@@ -17,6 +17,8 @@
         Guid FederationId, string FederationName,
         Guid? CityId, string? CityName, int MedalCount);
 
+    public record ChampionFederationOptionDto(Guid Id, string Name);
+
     // Used for a single champion's detail view — this is where the full
     // medal history actually belongs, since that's exactly the page where
     // a user wants to see it.
