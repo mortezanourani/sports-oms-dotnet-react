@@ -11,7 +11,7 @@ import MedalsModal from './MedalsModal';
 import SolarDatePicker from '../../../components/SolarDatePicker';
 import { toSolarPickerValue, toUtcDateTime } from '../../../utils/dates';
 
-export default function ChampionsTable({ filters }) {
+export default function ChampionsTable({ filters, filtersToolbar, headerActions }) {
     const [page, setPage] = useState(1);
     const [modalOpen, setModalOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
@@ -100,7 +100,13 @@ export default function ChampionsTable({ filters }) {
 
     return (
         <div>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>افزودن قهرمان جدید</Button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                {filtersToolbar}
+                <Space>
+                    {headerActions}
+                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>افزودن قهرمان جدید</Button>
+                </Space>
+            </div>
 
             <Table
                 rowKey="id"
