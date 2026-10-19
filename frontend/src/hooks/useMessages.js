@@ -29,8 +29,12 @@ export function useUnreadCount() {
     });
 }
 
-export function useRecipientOptions() {
-    return useQuery({ queryKey: ['messages', 'recipients'], queryFn: api.getRecipientOptions });
+export function useRecipientOptions(params, enabled = true) {
+    return useQuery({
+        queryKey: ['messages', 'recipients', params],
+        queryFn: () => api.getRecipientOptions(params),
+        enabled,
+    });
 }
 
 export function useSendMessage() {

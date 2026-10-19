@@ -4,7 +4,8 @@ export const getInbox = async (params) => (await api.get('/messages/inbox', { pa
 export const getSent = async (params) => (await api.get('/messages/sent', { params })).data;
 export const getMessage = async (id) => (await api.get(`/messages/${id}`)).data;
 export const getUnreadCount = async () => (await api.get('/messages/unread-count')).data;
-export const getRecipientOptions = async () => (await api.get('/messages/recipients')).data;
+export const getRecipientOptions = async (params) =>
+    (await api.get('/messages/recipients', { params })).data;
 
 export const sendMessage = async (payload) => (await api.post('/messages', payload)).data;
 

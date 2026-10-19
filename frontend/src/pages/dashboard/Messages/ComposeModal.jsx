@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Modal, Form, Input, Select, Upload, Button, message } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { useSendMessage, useAddAttachment, useRecipientOptions } from '../../../hooks/useMessages';
-import { ROLE_LABELS } from '../../../constants/labels';
+import { ROLE_LABELS, SCOPE_LEVEL_LABELS } from '../../../constants/labels';
+import { useAuth } from '../../../hooks/useAuth';
 
 const { TextArea } = Input;
 
@@ -10,8 +11,45 @@ export default function ComposeModal({ open, onClose }) {
     const [form] = Form.useForm();
     const [fileList, setFileList] = useState([]);
     const [sending, setSending] = useState(false);
+    const { role, scopeLevel } = useAuth();
+    const isFederationRep = role === 'FederationRep';
+    const recipientType = Form.useWatch('recipientType', form);
+    const recipientScopeLevel = Form.useWatch('scopeLevel', form);
+    const peerRoles = [
+        'Manager', 'Admin', 'SportsManager', 'M5Manager',
+        'M88Manager', 'HumanResourceManager', 'InsuranceOfficer',
+    ];
+    const recipientScopeOptions = (() => {
+        if (scopeLevel === 'Mastery') {
+            return ['Mastery', ...(peerRoles.includes(role) ? ['Province'] : [])];
+        }
+        if (scopeLevel === 'Province') {
+            return [
+                ...(peerRoles.includes(role) ? ['Mastery'] : []),
+                'Province',
+                'City',
+            ];
+        }
+        if (scopeLevel === 'City') {
+            return [...(peerRoles.includes(role) ? ['Province'] : []), 'City'];
+        }
+        return [];
+    })();
 
-    const { data: recipients } = useRecipientOptions();
+    const recipientParams = {
+        recipientType,
+        ...(recipientType === 'MainRole' && !isFederationRep
+            ? { scopeLevel: recipientScopeLevel }
+            : {}),
+    };
+    const hasRecipientScope = recipientType === 'FederationRep' ||
+        (recipientType === 'MainRole' && (isFederationRep || !!recipientScopeLevel));
+    const canReceiveFederationMessages =
+        isFederationRep || ['Admin', 'Manager', 'SportsManager'].includes(role);
+    const { data: recipients, isLoading: recipientsLoading } = useRecipientOptions(
+        recipientParams,
+        !!recipientType && hasRecipientScope,
+    );
     const sendMutation = useSendMessage();
     const attachMutation = useAddAttachment();
 
@@ -58,15 +96,53 @@ export default function ComposeModal({ open, onClose }) {
         >
             <Form form={form} layout="vertical" onFinish={handleFinish}>
                 <Form.Item
+                    name="recipientType"
+                    label="نوع گیرنده"
+                    rules={[{ required: true, message: 'نوع گیرنده را انتخاب کنید' }]}
+                >
+                    <Select
+                        placeholder="انتخاب نوع گیرنده"
+                        onChange={() => form.setFieldsValue({ scopeLevel: undefined, recipientIds: undefined })}
+                        options={[
+                            { value: 'MainRole', label: 'کاربر اداری' },
+                            ...(canReceiveFederationMessages
+                                ? [{ value: 'FederationRep', label: 'فدراسیون/هیات' }]
+                                : []),
+                        ]}
+                    />
+                </Form.Item>
+                {recipientType === 'MainRole' && !isFederationRep && (
+                    <Form.Item
+                        name="scopeLevel"
+                        label="حوزه گیرنده"
+                        rules={[{ required: true, message: 'حوزه گیرنده را انتخاب کنید' }]}
+                    >
+                        <Select
+                            placeholder="انتخاب حوزه"
+                            onChange={() => form.setFieldValue('recipientIds', undefined)}
+                            options={recipientScopeOptions.map((value) => ({
+                                value,
+                                label: SCOPE_LEVEL_LABELS[value],
+                            }))}
+                        />
+                    </Form.Item>
+                )}
+                <Form.Item
                     name="recipientIds" label="گیرندگان"
                     rules={[{ required: true, message: 'انتخاب حداقل یک گیرنده الزامی است' }]}
                 >
                     <Select
                         mode="multiple"
+                        disabled={!recipientType || !hasRecipientScope}
+                        loading={recipientsLoading}
                         placeholder="انتخاب گیرندگان"
                         options={recipients?.map((r) => ({
                             value: r.id,
-                            label: `${r.fullName} (${ROLE_LABELS[r.role] || r.role})`,
+                            label: `${r.fullName} (${[
+                                ROLE_LABELS[r.role] || r.role,
+                                SCOPE_LEVEL_LABELS[r.scopeLevel] || r.scopeLevel,
+                                r.provinceName || r.cityName,
+                            ].filter(Boolean).join(' ')})`,
                         }))}
                         optionFilterProp="label"
                     />
