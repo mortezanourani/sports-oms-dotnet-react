@@ -35,7 +35,6 @@ namespace Backend.Data
             builder.Entity<Federation>().Property(f => f.Level).HasConversion<string>();
             builder.Entity<FederationPosition>().Property(p => p.Position).HasConversion<string>();
             builder.Entity<Facility>().Property(f => f.FacilityType).HasConversion<string>();
-            builder.Entity<AthleteCount>().Property(a => a.Gender).HasConversion<string>();
             builder.Entity<Champion>().Property(c => c.Gender).HasConversion<string>();
             builder.Entity<Medal>().Property(m => m.MedalType).HasConversion<string>();
             builder.Entity<Medal>().Property(m => m.AgeGroup).HasConversion<string>();
@@ -83,7 +82,7 @@ namespace Backend.Data
                 .OnDelete(DeleteBehavior.Restrict);
 
             builder.Entity<AthleteCount>()
-                .HasIndex(a => new { a.FederationId, a.CityId, a.Year, a.Month, a.Gender })
+                .HasIndex(a => new { a.FederationId, a.CityId, a.Year, a.Month })
                 .IsUnique();
 
             // Self-referencing hierarchy. Restrict (not Cascade) so a parent

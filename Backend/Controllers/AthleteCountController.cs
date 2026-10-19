@@ -100,16 +100,14 @@ namespace Backend.Controllers
                         record.FederationId,
                         record.CityId,
                         record.Year,
-                        record.Month,
-                        record.Gender
+                        record.Month
                     })
                     .ToListAsync())
                 .Select(record => (
                     FederationId: record.FederationId,
                     CityId: record.CityId,
                     Year: record.Year,
-                    Month: record.Month,
-                    Gender: record.Gender))
+                    Month: record.Month))
                 .ToHashSet();
             var addedRecords = new List<AthleteCount>();
             var created = 0;
@@ -180,35 +178,27 @@ namespace Backend.Controllers
                     continue;
                 }
 
-                foreach (var (gender, count) in new[]
-                         {
-                             (Gender.Male, menCount),
-                             (Gender.Female, womenCount)
-                         })
+                var key = (
+                    FederationId: federationMatches[0].Id,
+                    CityId: cityMatches[0].Id,
+                    Year: year,
+                    Month: month);
+                if (!existingRecords.Add(key))
                 {
-                    var key = (
-                        FederationId: federationMatches[0].Id,
-                        CityId: cityMatches[0].Id,
-                        Year: year,
-                        Month: month,
-                        Gender: gender);
-                    if (!existingRecords.Add(key))
-                    {
-                        skippedExisting++;
-                        continue;
-                    }
-
-                    addedRecords.Add(new AthleteCount
-                    {
-                        FederationId = key.FederationId,
-                        CityId = cityMatches[0].Id,
-                        Year = year,
-                        Month = month,
-                        Gender = gender,
-                        Count = count
-                    });
-                    created++;
+                    skippedExisting++;
+                    continue;
                 }
+
+                addedRecords.Add(new AthleteCount
+                {
+                    FederationId = key.FederationId,
+                    CityId = cityMatches[0].Id,
+                    Year = year,
+                    Month = month,
+                    MaleCount = menCount,
+                    FemaleCount = womenCount
+                });
+                created++;
             }
 
             if (addedRecords.Count > 0)
@@ -245,7 +235,7 @@ namespace Backend.Controllers
 
         [HttpGet]
         public async Task<IActionResult> List(
-            Guid? federationId, int? year, string? gender, Guid? provinceId, Guid? cityId, int page = 1, int pageSize = 20)
+            Guid? federationId, int? year, Guid? provinceId, Guid? cityId, int page = 1, int pageSize = 20)
         {
             if (!CanRead())
                 return Forbid("شما اجازه مشاهده آمار ورزشکاران را ندارید");
@@ -257,13 +247,6 @@ namespace Backend.Controllers
 
             if (federationId.HasValue) qs = qs.Where(a => a.FederationId == federationId.Value);
             if (year.HasValue) qs = qs.Where(a => a.Year == year.Value);
-
-            if (!string.IsNullOrEmpty(gender))
-            {
-                if (!Enum.TryParse<Gender>(gender, out var genderEnum))
-                    return BadRequest(new { detail = "جنسیت نامعتبر است" });
-                qs = qs.Where(a => a.Gender == genderEnum);
-            }
 
             if (cityId.HasValue) qs = qs.Where(a => a.CityId == cityId.Value);
             else if (provinceId.HasValue) qs = qs.Where(a => a.City.ProvinceId == provinceId.Value);
@@ -303,10 +286,128 @@ namespace Backend.Controllers
                 .Select(a => new AthleteCountOutDto(
                     a.Id, a.FederationId, a.Federation.Name!,
                     a.CityId, a.City.Name, a.City.Province.Name,
-                    a.Year, a.Month, a.Gender.ToString(), a.Count))
+                    a.Year, a.Month, a.MaleCount, a.FemaleCount))
                 .ToListAsync();
 
             return Ok(new { items, count });
+        }
+
+        [HttpGet("summary")]
+        public async Task<IActionResult> Summary(
+            Guid? provinceId, Guid? cityId, int? year = null, int? month = null)
+        {
+            if (!CanRead())
+                return Forbid("شما اجازه مشاهده آمار ورزشکاران را ندارید");
+
+            if (month.HasValue && (!year.HasValue || month is < 1 or > 12))
+                return BadRequest(new { detail = "برای فیلتر ماه، سال معتبر و ماه بین ۱ تا ۱۲ الزامی است" });
+
+            var records = ApplySummaryScope(
+                _db.AthleteCounts.AsQueryable(), provinceId, cityId);
+            records = ApplySummaryPeriod(records, year, month);
+
+            var totals = await records
+                .GroupBy(record => record.FederationId)
+                .Select(group => new
+                {
+                    FederationId = group.Key,
+                    MaleCount = group.Sum(record => record.MaleCount),
+                    FemaleCount = group.Sum(record => record.FemaleCount)
+                })
+                .ToListAsync();
+            var totalsByFederation = totals.ToDictionary(total => total.FederationId);
+            var recordIds = new Dictionary<Guid, Guid>();
+            if (year.HasValue && month.HasValue && cityId.HasValue)
+            {
+                var matchedRecordIds = await records
+                    .Select(record => new { record.FederationId, record.Id })
+                    .ToListAsync();
+                recordIds = matchedRecordIds.ToDictionary(record => record.FederationId, record => record.Id);
+            }
+
+            var federations = await _db.Federations
+                .Where(federation => federation.Level == FederationLevel.National)
+                .OrderBy(federation => federation.Name)
+                .Select(federation => new { federation.Id, FederationName = federation.Name ?? "" })
+                .ToListAsync();
+
+            return Ok(federations.Select(federation =>
+            {
+                totalsByFederation.TryGetValue(federation.Id, out var total);
+                var maleCount = total?.MaleCount ?? 0;
+                var femaleCount = total?.FemaleCount ?? 0;
+                recordIds.TryGetValue(federation.Id, out var recordId);
+                return new AthleteCountFederationSummaryDto(
+                    federation.Id, federation.FederationName,
+                    recordId == Guid.Empty ? null : recordId,
+                    maleCount, femaleCount, maleCount + femaleCount);
+            }));
+        }
+
+        [HttpGet("summary/filters")]
+        public async Task<IActionResult> SummaryFilters(Guid? provinceId, Guid? cityId, int? year)
+        {
+            if (!CanRead())
+                return Forbid("شما اجازه مشاهده آمار ورزشکاران را ندارید");
+
+            var records = ApplySummaryScope(
+                _db.AthleteCounts.AsQueryable(), provinceId, cityId);
+            var years = await records
+                .Select(record => record.Year)
+                .Distinct()
+                .OrderByDescending(value => value)
+                .ToArrayAsync();
+            var months = year.HasValue
+                ? await records
+                    .Where(record => record.Year == year.Value)
+                    .Select(record => record.Month)
+                    .Distinct()
+                    .OrderBy(value => value)
+                    .ToArrayAsync()
+                : [];
+
+            return Ok(new AthleteCountSummaryFiltersDto(years, months));
+        }
+
+        private IQueryable<AthleteCount> ApplySummaryScope(
+            IQueryable<AthleteCount> records, Guid? provinceId, Guid? cityId)
+        {
+            if (provinceId.HasValue)
+                records = records.Where(record => record.City.ProvinceId == provinceId.Value);
+            if (cityId.HasValue)
+                records = records.Where(record => record.CityId == cityId.Value);
+
+            if (HasFullAccess())
+                return _scope.FilterAthleteCounts(records, User);
+
+            var myScope = User.ScopeLevel();
+            if (myScope == "Province")
+                return records.Where(record => record.City.ProvinceId == User.ScopeProvinceId());
+            if (myScope == "City")
+                return records.Where(record => record.CityId == User.ScopeCityId());
+            return myScope == "Mastery" ? records : records.Where(_ => false);
+        }
+
+        private static IQueryable<AthleteCount> ApplySummaryPeriod(
+            IQueryable<AthleteCount> records, int? year, int? month)
+        {
+            if (year.HasValue)
+            {
+                records = records.Where(record => record.Year == year.Value);
+                if (month.HasValue)
+                    records = records.Where(record => record.Month == month.Value);
+                return records;
+            }
+
+            var tehranToday = TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Asia/Tehran"));
+            var persianCalendar = new System.Globalization.PersianCalendar();
+            var currentMonthIndex = persianCalendar.GetYear(tehranToday) * 12 +
+                persianCalendar.GetMonth(tehranToday);
+            var firstMonthIndex = currentMonthIndex - 11;
+            return records.Where(record =>
+                record.Year * 12 + record.Month >= firstMonthIndex &&
+                record.Year * 12 + record.Month <= currentMonthIndex);
         }
 
         [HttpGet("{id}")]
@@ -328,7 +429,7 @@ namespace Backend.Controllers
             return Ok(new AthleteCountOutDto(
                 a.Id, a.FederationId, a.Federation.Name!,
                 a.CityId, a.City.Name, a.City.Province.Name,
-                a.Year, a.Month, a.Gender.ToString(), a.Count));
+                a.Year, a.Month, a.MaleCount, a.FemaleCount));
         }
 
         [HttpPost]
@@ -340,10 +441,8 @@ namespace Backend.Controllers
 
             if (dto.Month < 1 || dto.Month > 12)
                 return BadRequest(new { detail = "ماه باید بین ۱ تا ۱۲ باشد" });
-            if (dto.Count < 0)
-                return BadRequest(new { detail = "تعداد نمی‌تواند منفی باشد" });
-            if (!Enum.TryParse<Gender>(dto.Gender, out var genderEnum))
-                return BadRequest(new { detail = "جنسیت نامعتبر است" });
+            if (dto.MaleCount < 0 || dto.FemaleCount < 0)
+                return BadRequest(new { detail = "تعداد ورزشکاران نمی‌تواند منفی باشد" });
 
             var federation = await _db.Federations.FindAsync(dto.FederationId);
             if (federation == null || federation.Level != FederationLevel.National)
@@ -355,12 +454,12 @@ namespace Backend.Controllers
 
             var existing = await _db.AthleteCounts.FirstOrDefaultAsync(a =>
                 a.FederationId == dto.FederationId && a.CityId == dto.CityId &&
-                a.Year == dto.Year && a.Month == dto.Month && a.Gender == genderEnum);
+                a.Year == dto.Year && a.Month == dto.Month);
 
             if (existing != null)
                 return Conflict(new
                 {
-                    detail = "آماری برای این فدراسیون/شهر/سال/ماه/جنسیت قبلاً ثبت شده است. لطفاً رکورد موجود را ویرایش کنید.",
+                    detail = "آماری برای این فدراسیون/شهر/سال/ماه قبلاً ثبت شده است. لطفاً رکورد موجود را ویرایش کنید.",
                     existingId = existing.Id
                 });
 
@@ -370,8 +469,8 @@ namespace Backend.Controllers
                 CityId = dto.CityId,
                 Year = dto.Year,
                 Month = dto.Month,
-                Gender = genderEnum,
-                Count = dto.Count
+                MaleCount = dto.MaleCount,
+                FemaleCount = dto.FemaleCount
             };
 
             _db.AthleteCounts.Add(athleteCount);
@@ -391,13 +490,14 @@ namespace Backend.Controllers
             if (athleteCount == null)
                 return NotFound(new { detail = "رکورد یافت نشد" });
 
-            if (dto.Count < 0)
-                return BadRequest(new { detail = "تعداد نمی‌تواند منفی باشد" });
+            if (dto.MaleCount < 0 || dto.FemaleCount < 0)
+                return BadRequest(new { detail = "تعداد ورزشکاران نمی‌تواند منفی باشد" });
 
             try { await _scope.CheckCityAllowedAsync(User, athleteCount.CityId); }
             catch (UnauthorizedAccessException ex) { return Forbid(ex.Message); }
 
-            athleteCount.Count = dto.Count;
+            athleteCount.MaleCount = dto.MaleCount;
+            athleteCount.FemaleCount = dto.FemaleCount;
             await _db.SaveChangesAsync();
 
             return Ok(new { success = true });

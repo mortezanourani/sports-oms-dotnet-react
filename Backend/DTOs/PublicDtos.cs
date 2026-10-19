@@ -14,5 +14,5 @@
 
     public record PublicAthleteStatDto(
         string FederationName, string ProvinceName, string CityName,
-        int Year, int Month, string Gender, int Count);
+        int Year, int Month, int MaleCount, int FemaleCount);
 }
