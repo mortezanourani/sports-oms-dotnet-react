@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Button, Space, Typography, message, Modal, Form, Input, Upload, List, Select } from 'antd';
-import { PlusOutlined, DownloadOutlined, UploadOutlined } from '@ant-design/icons';
-import { useProvinces, useCreateProvince } from '../../../hooks/useLocations';
+import { Button, Space, Typography, message, Modal, Form, Input, Upload, List, Select, Table, Popconfirm } from 'antd';
+import { PlusOutlined, DownloadOutlined, UploadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { useProvinces, useCreateProvince, useUpdateProvince, useDeleteProvince } from '../../../hooks/useLocations';
 import { useImportLocations } from '../../../hooks/useLocations';
 import { downloadLocationsImportTemplate } from '../../../api/locations';
 import CitiesPanel from './CitiesPanel';
@@ -16,9 +16,12 @@ export default function LocationsPage() {
     const [selectedFile, setSelectedFile] = useState(null);
     const [importResult, setImportResult] = useState(null);
     const [selectedProvinceId, setSelectedProvinceId] = useState(null);
+    const [editingProvince, setEditingProvince] = useState(null);
     const [form] = Form.useForm();
 
     const createMutation = useCreateProvince();
+    const updateMutation = useUpdateProvince();
+    const deleteMutation = useDeleteProvince();
     const importMutation = useImportLocations();
 
     const handleDownloadTemplate = async () => {
@@ -51,19 +54,72 @@ export default function LocationsPage() {
     };
 
     const openCreate = () => {
+        setEditingProvince(null);
         form.resetFields();
+        setModalOpen(true);
+    };
+
+    const openEdit = (province) => {
+        setEditingProvince(province);
+        form.setFieldsValue({ name: province.name });
         setModalOpen(true);
     };
 
     const handleFinish = async (values) => {
         try {
-            await createMutation.mutateAsync(values);
+            if (editingProvince) {
+                await updateMutation.mutateAsync({ id: editingProvince.id, payload: values });
+            } else {
+                await createMutation.mutateAsync(values);
+            }
             message.success('با موفقیت ذخیره شد');
             setModalOpen(false);
         } catch (err) {
             message.error(err.response?.data?.detail || 'خطایی رخ داد');
         }
     };
+
+    const handleDeleteProvince = async (id) => {
+        try {
+            await deleteMutation.mutateAsync(id);
+            message.success('حذف شد');
+        } catch (err) {
+            message.error(err.response?.data?.detail || 'خطا در حذف');
+        }
+    };
+
+    const provinceColumns = [
+        { title: 'نام استان', dataIndex: 'name', key: 'name' },
+        {
+            title: 'عملیات',
+            key: 'actions',
+            render: (_, province) => (
+                <Space>
+                    <Button
+                        icon={<EditOutlined />}
+                        size="small"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            openEdit(province);
+                        }}
+                    />
+                    <Popconfirm
+                        title="حذف این استان؟"
+                        onConfirm={() => handleDeleteProvince(province.id)}
+                        okText="بله"
+                        cancelText="خیر"
+                    >
+                        <Button
+                            icon={<DeleteOutlined />}
+                            size="small"
+                            danger
+                            onClick={(event) => event.stopPropagation()}
+                        />
+                    </Popconfirm>
+                </Space>
+            ),
+        },
+    ];
 
     return (
         <div>
@@ -93,18 +149,31 @@ export default function LocationsPage() {
                 </Space>
             </div>
 
-            <CitiesPanel
-                key={selectedProvinceId || 'all-provinces'}
-                provinceId={selectedProvinceId}
-                provinces={provinces}
-            />
+            {selectedProvinceId ? (
+                <CitiesPanel
+                    key={selectedProvinceId}
+                    provinceId={selectedProvinceId}
+                    provinces={provinces}
+                />
+            ) : (
+                <Table
+                    rowKey="id"
+                    columns={provinceColumns}
+                    dataSource={provinces}
+                    pagination={{ pageSize: 10, showSizeChanger: false }}
+                    onRow={(province) => ({
+                        onClick: () => setSelectedProvinceId(province.id),
+                        style: { cursor: 'pointer' },
+                    })}
+                />
+            )}
 
             <Modal
-                title="افزودن استان جدید"
+                title={editingProvince ? 'ویرایش استان' : 'افزودن استان جدید'}
                 open={modalOpen}
                 onCancel={() => setModalOpen(false)}
                 onOk={() => form.submit()}
-                confirmLoading={createMutation.isPending}
+                confirmLoading={createMutation.isPending || updateMutation.isPending}
                 okText="ذخیره"
                 cancelText="انصراف"
                 destroyOnClose
