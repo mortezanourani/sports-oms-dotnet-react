@@ -269,16 +269,20 @@ namespace Backend.Controllers
                 .Where(u => allowedRecipientIds.Contains(u.Id))
                 .OrderBy(u => u.FirstName)
                 .ThenBy(u => u.LastName)
-                .Select(u => new RecipientOptionDto(
-                    u.Id,
-                    GetDisplayName(u),
-                    u.Role.ToString(),
-                    u.ScopeLevel.ToString(),
-                    u.ScopeProvince != null ? u.ScopeProvince.Name : null,
-                    u.ScopeCity != null ? u.ScopeCity.Name : null))
                 .ToListAsync();
 
-            return Ok(users);
+            var federationPositionLabels = recipientType == "FederationRep"
+                ? await GetAllowedFederationPositionLabelsAsync(sender, allowedRecipientIds)
+                : new Dictionary<Guid, List<string>>();
+
+            return Ok(users.Select(user => new RecipientOptionDto(
+                user.Id,
+                GetDisplayName(user),
+                user.Role.ToString(),
+                user.ScopeLevel.ToString(),
+                user.ScopeProvince?.Name,
+                user.ScopeCity?.Name,
+                federationPositionLabels.GetValueOrDefault(user.Id, []))));
         }
 
         private async Task<List<Guid>> GetAllowedRecipientIdsAsync(
@@ -430,6 +434,104 @@ namespace Backend.Controllers
                 .Where(user => IsSameGeographicScope(user, sender))
                 .Select(user => user.Id)
                 .ToList();
+        }
+
+        private async Task<Dictionary<Guid, List<string>>> GetAllowedFederationPositionLabelsAsync(
+            ApplicationUser sender, List<Guid> allowedRecipientIds)
+        {
+            if (allowedRecipientIds.Count == 0) return [];
+
+            var today = TehranDateTime.TodayUtc;
+            var senderPositions = await _db.FederationPositions
+                .Where(position =>
+                    position.UserId == sender.Id &&
+                    position.User.Role == UserRole.FederationRep &&
+                    position.StartDate <= today)
+                .ToListAsync();
+            senderPositions = senderPositions
+                .Where(position => IsActivePosition(position, today))
+                .ToList();
+
+            IQueryable<FederationPosition> positionsQuery = _db.FederationPositions
+                .Include(position => position.Federation)
+                    .ThenInclude(federation => federation.Province)
+                .Include(position => position.Federation)
+                    .ThenInclude(federation => federation.ParentFederation)
+                        .ThenInclude(parent => parent!.ParentFederation)
+                .Include(position => position.Federation)
+                    .ThenInclude(federation => federation.City)
+                        .ThenInclude(city => city!.Province)
+                .Where(position =>
+                    allowedRecipientIds.Contains(position.UserId) &&
+                    position.User.Role == UserRole.FederationRep &&
+                    position.StartDate <= today);
+
+            if (sender.Role != UserRole.FederationRep)
+            {
+                var positions = await positionsQuery.ToListAsync();
+                return positions
+                    .Where(position =>
+                        IsActivePosition(position, today) &&
+                        IsFederationWithinGeographicScope(position.Federation, sender) &&
+                        (sender.Role != UserRole.SportsManager ||
+                         position.Position == FederationPositionType.President))
+                    .GroupBy(position => position.UserId)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(FormatFederationPositionLabel).Distinct().ToList());
+            }
+
+            var senderFederationIds = senderPositions
+                .Select(position => position.FederationId)
+                .ToHashSet();
+            var presidentFederationIds = senderPositions
+                .Where(position => position.Position == FederationPositionType.President)
+                .Select(position => position.FederationId)
+                .ToHashSet();
+            var adjacentFederationIds = senderPositions
+                .Where(position => presidentFederationIds.Contains(position.FederationId))
+                .Select(position => position.Federation?.ParentFederationId)
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
+                .ToHashSet();
+            var childFederationIds = await _db.Federations
+                .Where(federation =>
+                    federation.ParentFederationId.HasValue &&
+                    presidentFederationIds.Contains(federation.ParentFederationId.Value))
+                .Select(federation => federation.Id)
+                .ToListAsync();
+            adjacentFederationIds.UnionWith(childFederationIds);
+
+            var recipientPositions = await positionsQuery.ToListAsync();
+            return recipientPositions
+                .Where(position =>
+                    IsActivePosition(position, today) &&
+                    (senderFederationIds.Contains(position.FederationId) ||
+                     adjacentFederationIds.Contains(position.FederationId) &&
+                     position.Position == FederationPositionType.President))
+                .GroupBy(position => position.UserId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(FormatFederationPositionLabel).Distinct().ToList());
+        }
+
+        private static string FormatFederationPositionLabel(FederationPosition position)
+        {
+            var federation = position.Federation;
+            var positionName = position.Position switch
+            {
+                FederationPositionType.President => "رئیس",
+                FederationPositionType.Miss => "نایب رئیس",
+                FederationPositionType.Vice => "دبیر",
+                _ => position.Position.ToString()
+            };
+            var federationName = federation.Level == FederationLevel.National
+                ? $"فدراسیون {federation.Name}"
+                : federation.Level == FederationLevel.Provincial
+                    ? $"هیات {federation.ParentFederation?.Name} استان {federation.Province?.Name}"
+                    : $"هیات {federation.ParentFederation?.ParentFederation?.Name} شهرستان {federation.City?.Name}";
+
+            return $"{positionName} {federationName}";
         }
 
         private static bool CanMessageMainRoleUser(ApplicationUser sender, ApplicationUser recipient)

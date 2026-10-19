@@ -23,5 +23,5 @@
 
     public record RecipientOptionDto(
         Guid Id, string FullName, string Role, string ScopeLevel,
-        string? ProvinceName, string? CityName);
+        string? ProvinceName, string? CityName, List<string> FederationPositions);
 }
