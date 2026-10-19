@@ -523,7 +523,7 @@ namespace Backend.Controllers
             {
                 query = query.Where(f => 
                     (f.Level == FederationLevel.Provincial && f.ProvinceId == myProvinceId) ||
-                    (f.Level == FederationLevel.City && f.ProvinceId == myProvinceId));
+                    (f.Level == FederationLevel.City && f.City!.ProvinceId == myProvinceId));
             }
             else if (myScopeLevel == "City")
             {
@@ -537,10 +537,17 @@ namespace Backend.Controllers
 
         private static string ComposeDisplayName(Federation f)
         {
-            if (f.Level == FederationLevel.National) return f.Name ?? "";
-            var parentName = f.ParentFederation?.Name ?? "";
-            var regionName = f.Level == FederationLevel.Provincial ? f.Province?.Name : f.City?.Name;
-            return $"{parentName} - {regionName}";
+            var federationName = f.Level == FederationLevel.City
+                ? f.ParentFederation?.ParentFederation?.Name
+                : f.ParentFederation?.Name;
+
+            return f.Level switch
+            {
+                FederationLevel.National => $"فدراسیون {f.Name}",
+                FederationLevel.Provincial => $"هیات {federationName} استان {f.Province?.Name}",
+                FederationLevel.City => $"هیات {federationName} شهرستان {f.City?.Name}",
+                _ => string.Empty,
+            };
         }
 
         [HttpGet("parent-options")]
@@ -592,7 +599,8 @@ namespace Backend.Controllers
         public async Task<IActionResult> List(string? level, Guid? parentFederationId, Guid? provinceId, Guid? cityId)
         {
             var qs = _db.Federations
-                .Include(f => f.ParentFederation).Include(f => f.Province).Include(f => f.City)
+                .Include(f => f.ParentFederation).ThenInclude(f => f!.ParentFederation)
+                .Include(f => f.Province).Include(f => f.City)
                 .Include(f => f.ChildFederations)
                 .AsQueryable();
 
@@ -606,8 +614,12 @@ namespace Backend.Controllers
                 qs = qs.Where(f => f.Level == levelEnum);
             }
 
-            if (cityId.HasValue) qs = qs.Where(f => f.CityId == cityId.Value);
-            else if (provinceId.HasValue) qs = qs.Where(f => f.ProvinceId == provinceId.Value);
+            if (cityId.HasValue)
+                qs = qs.Where(f => f.CityId == cityId.Value);
+            else if (provinceId.HasValue)
+                qs = qs.Where(f => f.Level == FederationLevel.City
+                    ? f.City!.ProvinceId == provinceId.Value
+                    : f.ProvinceId == provinceId.Value);
             
             if (parentFederationId.HasValue)
                 qs = qs.Where(f => f.ParentFederationId == parentFederationId.Value);
@@ -629,7 +641,8 @@ namespace Backend.Controllers
         public async Task<IActionResult> Get(Guid id)
         {
             var f = await _db.Federations
-                .Include(x => x.ParentFederation).Include(x => x.Province).Include(x => x.City).Include(x => x.ChildFederations)
+                .Include(x => x.ParentFederation).ThenInclude(x => x!.ParentFederation)
+                .Include(x => x.Province).Include(x => x.City).Include(x => x.ChildFederations)
                 .FirstOrDefaultAsync(x => x.Id == id);
 
             if (f == null) return NotFound(new { detail = "فurasیون یافت نشد" });
@@ -781,12 +794,25 @@ namespace Backend.Controllers
             if (federation == null) return NotFound(new { detail = "فurasیون یافت نشد" });
 
             if (federation.Level != FederationLevel.National)
-                return BadRequest(new { detail = "فurasیون‌های استانی و شهری قابل ویرایش نیستند" });
+                return BadRequest(new { detail = "فدراسیون‌های استانی و شهری قابل ویرایش نیستند" });
 
             if (!CanManageMastery())
                 return Forbid("فقط کاربران با سطح دسترسی ملی مجاز به ویرایش فurasیون ملی هستند");
 
+            if (string.IsNullOrWhiteSpace(dto.Name))
+                return BadRequest(new { detail = "لطفا نام فدراسیون را وارد کنید" });
+
+            FederationCategory? category = null;
+            if (!string.IsNullOrWhiteSpace(dto.Category))
+            {
+                if (!Enum.TryParse<FederationCategory>(dto.Category, out var categoryEnum) ||
+                    !Enum.IsDefined(categoryEnum))
+                    return BadRequest(new { detail = "دسته‌بندی نامعتبر است" });
+                category = categoryEnum;
+            }
+
             federation.Name = dto.Name;
+            federation.Category = category;
             await _db.SaveChangesAsync();
             return Ok(new { success = true });
         }

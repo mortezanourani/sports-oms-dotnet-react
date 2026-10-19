@@ -10,7 +10,7 @@
         Guid? ProvinceId,          // required for Provincial
         Guid? CityId);             // required for City
 
-    public record FederationUpdateDto(string Name); // National only
+    public record FederationUpdateDto(string Name, string? Category); // National only
 
     public record FederationOutDto(
         Guid Id, string DisplayName, string? Category, string Level,
