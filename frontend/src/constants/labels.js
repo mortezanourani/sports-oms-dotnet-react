@@ -49,6 +49,7 @@ export const ROLE_LABELS = {
   InsuranceOfficer: 'کارشناس بیمه ورزشی',
   SportsManager: 'معاون ورزشی',
   SportsOfficer: 'کارشناس ورزش',
+  UnAssigned: 'تعیین نشده',
   FederationRep: 'نماینده فدراسیون/هیات'
 };
 
