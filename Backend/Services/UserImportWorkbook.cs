@@ -63,7 +63,8 @@ public static class UserImportWorkbook
             [nameof(UserRole.M88Officer)] = "کارشناس ماده 88",
             [nameof(UserRole.M5Manager)] = "مسئول امور باشگاه‌ها",
             [nameof(UserRole.M5Officer)] = "کارشناس امور باشگاه‌ها",
-            [nameof(UserRole.InsuranceOfficer)] = "کارشناس بیمه ورزشی"
+            [nameof(UserRole.InsuranceOfficer)] = "کارشناس بیمه ورزشی",
+            [nameof(UserRole.UnAssigned)] = "تعیین نشده"
         };
 
     public static byte[] CreateTemplate()
@@ -197,7 +198,10 @@ public static class UserImportWorkbook
     {
         role = default;
         if (string.IsNullOrWhiteSpace(value))
-            return false;
+        {
+            role = UserRole.UnAssigned;
+            return true;
+        }
 
         var normalized = value.Trim();
         var roleName = RoleLabels.FirstOrDefault(pair =>

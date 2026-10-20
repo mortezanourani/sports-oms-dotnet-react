@@ -10,12 +10,13 @@ namespace Backend.Models
         HumanResourceOfficer,
         SportsManager,
         SportsOfficer,
-        FederationRep,
         M88Manager,
         M88Officer,
         M5Manager,
         M5Officer,
-        InsuranceOfficer
+        InsuranceOfficer,
+        UnAssigned,
+        FederationRep
     }
 
     public enum ScopeLevel
