@@ -457,8 +457,7 @@ namespace Backend.Controllers
                 if (string.IsNullOrWhiteSpace(row.Username) ||
                     string.IsNullOrWhiteSpace(row.FirstName) ||
                     string.IsNullOrWhiteSpace(row.LastName) ||
-                    string.IsNullOrWhiteSpace(row.Scope) ||
-                    string.IsNullOrWhiteSpace(row.Role))
+                    string.IsNullOrWhiteSpace(row.Scope))
                 {
                     skippedRequired++;
                     continue;
