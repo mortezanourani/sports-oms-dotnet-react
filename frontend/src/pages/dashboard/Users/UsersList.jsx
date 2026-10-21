@@ -12,6 +12,7 @@ const { Title } = Typography;
 export default function UsersList() {
   const geo = useGeoSections();
   const { role: myRole } = useAuth();
+  const [page, setPage] = useState(1);
   const canManage = ['Admin', 'Manager', 'HumanResourceManager', 'HumanResourceOfficer'].includes(myRole);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [fileList, setFileList] = useState([]);
@@ -52,7 +53,13 @@ export default function UsersList() {
   const items = [
     geo.showMastery && {
       key: 'mastery', label: 'وزارت',
-      children: <UsersTable filters={{ scopeLevel: 'Mastery' }} />,
+      children: <UsersTable
+                  filters={{
+                    scopeLevel: 'Mastery'
+                  }}
+                  page={page}
+                  onPageChange={setPage}
+                />,
     },
     geo.showProvinceSection && {
       key: 'province', label: 'اداره کل',
@@ -69,7 +76,14 @@ export default function UsersList() {
                     options={geo.provinceOptions?.map((p) => ({ value: p.id, label: p.name }))}
                 />
             )}
-            <UsersTable filters={{ scopeLevel: 'Province', provinceId: geo.selectedProvinceId }} />
+            <UsersTable
+              filters={{ 
+                scopeLevel: 'Province',
+                provinceId: geo.selectedProvinceId
+              }}
+              page={page}
+              onPageChange={setPage}
+             />
           </>
       ),
     },
@@ -87,10 +101,14 @@ export default function UsersList() {
                     options={geo.cityOptions?.map((c) => ({ value: c.id, label: c.name }))}
                 />
             )}
-            <UsersTable filters={{
-              scopeLevel: 'City',
-              cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId,
-            }} />
+            <UsersTable 
+              filters={{
+                scopeLevel: 'City',
+                cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId,
+              }}
+              page={page}
+              onPageChange={setPage}
+             />
           </>
       ),
     },
