@@ -25,7 +25,12 @@ const SCOPE_PRIORITY = {
   City: 0,
 };
 
-export default function UsersList({ filters }) {
+export default function UsersList({ 
+  filters,
+  page,
+  onPageChange,
+  renderActions
+}) {
   const geo = useGeoSections();
 
   const { role: myRole, scopeLevel: myScopeLevel } = useAuth();
@@ -46,7 +51,11 @@ export default function UsersList({ filters }) {
   const scopeLevel = Form.useWatch('scopeLevel', form) || 'Mastery';
   const selectedProvinceId = Form.useWatch('scopeProvinceId', form);
 
-  const { data: users, isLoading } = useUsers(filters);
+  const { data, isLoading } = useUsers({
+    page,
+    pageSize: 10,
+    ...filters,
+  });
   const { data: editingUser, isFetching: isFetchingEditing } = useUser(editingId);
   const { data: provinces } = useProvinces();
   const { data: cities } = useCities(selectedProvinceId);
@@ -175,7 +184,13 @@ export default function UsersList({ filters }) {
         )}
       </div>
 
-      <Table rowKey="id" columns={columns} dataSource={users} loading={isLoading} pagination={false} />
+      <Table 
+        rowKey="id"
+        columns={columns}
+        dataSource={data?.items}
+        loading={isLoading}
+        pagination={{ current: page, pageSize: 10, total: data?.count, onChange: onPageChange }}
+      />
 
       <Modal
         title={isEdit ? 'ویرایش کاربر' : 'افزودن کاربر جدید'}
