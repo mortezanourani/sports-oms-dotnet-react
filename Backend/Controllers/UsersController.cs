@@ -203,7 +203,12 @@ namespace Backend.Controllers
         // GET /api/users?scopeLevel=&provinceId=&cityId=
         [HttpGet]
         [Authorize(Roles = UserManagementRoles)]
-        public async Task<IActionResult> List(string? scopeLevel, Guid? provinceId, Guid? cityId)
+        public async Task<IActionResult> List(
+            string? scopeLevel,
+            Guid? provinceId,
+            Guid? cityId,
+            int page = 1,
+            int pageSize = 10)
         {
             var qs = _db.Users.Include(u => u.ScopeProvince).Include(u => u.ScopeCity).AsQueryable();
 
@@ -278,15 +283,17 @@ namespace Backend.Controllers
                 qs = qs.Where(u => u.ScopeLevel == ScopeLevel.City && u.ScopeCityId == myCityId);
             }
 
-            var users = await qs
-                .OrderBy(u => u.UserName)
+            var count = await qs.CountAsync();
+            var items = await qs.Skip((page - 1) * pageSize).Take(pageSize)
+                .OrderBy(u => u.LastName)
+                .OrderBy(u => u.FirstName)
                 .Select(u => new UserOutDto(
                     u.Id, u.UserName!, u.FirstName ?? "", u.LastName ?? "", u.Role.ToString(), u.ScopeLevel.ToString(),
                     u.ScopeProvinceId, u.ScopeProvince != null ? u.ScopeProvince.Name : null,
                     u.ScopeCityId, u.ScopeCity != null ? u.ScopeCity.Name : null))
                 .ToListAsync();
 
-            return Ok(users);
+            return Ok(new { items, count });
         }
 
         [HttpGet("{id}")]
