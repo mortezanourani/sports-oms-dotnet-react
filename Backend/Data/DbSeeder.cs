@@ -40,9 +40,21 @@ namespace Backend.Data
                 EmailConfirmed = true
             };
 
+            var db = services.GetRequiredService<ApplicationDbContext>();
+            db.UserAssignmentHistories.Add(new UserAssignmentHistory
+            {
+                Id = Guid.NewGuid(),
+                UserId = admin.Id,
+                Role = admin.Role,
+                ScopeLevel = admin.ScopeLevel,
+                StartedAtUtc = DateTimeOffset.UtcNow
+            });
+
             var result = await userManager.CreateAsync(admin, adminPassword);
             if (!result.Succeeded)
             {
+                db.UserAssignmentHistories.Remove(
+                    db.UserAssignmentHistories.Local.Single(history => history.UserId == admin.Id));
                 var errors = string.Join(", ", result.Errors.Select(e => e.Description));
                 throw new Exception($"Failed to seed admin user: {errors}");
             }

@@ -47,6 +47,20 @@
     string? ScopeCityName
     );
 
+    public record UserAssignmentHistoryOutDto(
+    Guid Id,
+    string Role,
+    string ScopeLevel,
+    Guid? ScopeProvinceId,
+    string? ScopeProvinceName,
+    Guid? ScopeCityId,
+    string? ScopeCityName,
+    DateTimeOffset? StartedAtUtc,
+    DateTimeOffset? EndedAtUtc,
+    bool IsLegacy,
+    string? ChangedByUsername
+    );
+
     // Submitted when an Admin assigns someone as a federation's
     // president/miss/vice. Deliberately separate from user creation, since
     // a user's role ("FederationRep") and their specific position/federation

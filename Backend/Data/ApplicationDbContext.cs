@@ -23,6 +23,7 @@ namespace Backend.Data
         public DbSet<MessageRecipient> MessageRecipients => Set<MessageRecipient>();
         public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+        public DbSet<UserAssignmentHistory> UserAssignmentHistories => Set<UserAssignmentHistory>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -31,6 +32,11 @@ namespace Backend.Data
             // Enum -> string conversions (readable in DB, matches the Django app's approach)
             builder.Entity<ApplicationUser>().Property(u => u.Role).HasConversion<string>();
             builder.Entity<ApplicationUser>().Property(u => u.ScopeLevel).HasConversion<string>();
+            builder.Entity<UserAssignmentHistory>().Property(h => h.Role).HasConversion<string>();
+            builder.Entity<UserAssignmentHistory>().Property(h => h.ScopeLevel).HasConversion<string>();
+            builder.Entity<UserAssignmentHistory>()
+                .Property(h => h.EndedAtUtc)
+                .HasColumnName("ended_at_utc");
             builder.Entity<Federation>().Property(f => f.Category).HasConversion<string>();
             builder.Entity<Federation>().Property(f => f.Level).HasConversion<string>();
             builder.Entity<FederationPosition>().Property(p => p.Position).HasConversion<string>();
@@ -111,6 +117,33 @@ namespace Backend.Data
                 .WithMany(f => f.Positions)
                 .HasForeignKey(a => a.FederationId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<UserAssignmentHistory>()
+                .HasOne(h => h.User)
+                .WithMany()
+                .HasForeignKey(h => h.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<UserAssignmentHistory>()
+                .HasOne(h => h.ScopeProvince)
+                .WithMany()
+                .HasForeignKey(h => h.ScopeProvinceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<UserAssignmentHistory>()
+                .HasOne(h => h.ScopeCity)
+                .WithMany()
+                .HasForeignKey(h => h.ScopeCityId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<UserAssignmentHistory>()
+                .HasIndex(h => new { h.UserId, h.StartedAtUtc });
+
+            builder.Entity<UserAssignmentHistory>()
+                .HasIndex(h => h.UserId)
+                .IsUnique()
+                .HasFilter("\"ended_at_utc\" IS NULL");
+
         }
     }
 }

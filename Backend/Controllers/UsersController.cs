@@ -22,15 +22,18 @@ namespace Backend.Controllers
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly FederationPositionService _federationPositionService;
+        private readonly UserAssignmentHistoryService _assignmentHistoryService;
 
         public UsersController(
             ApplicationDbContext db,
             UserManager<ApplicationUser> userManager,
-            FederationPositionService federationPositionService)
+            FederationPositionService federationPositionService,
+            UserAssignmentHistoryService assignmentHistoryService)
         {
             _db = db;
             _userManager = userManager;
             _federationPositionService = federationPositionService;
+            _assignmentHistoryService = assignmentHistoryService;
         }
 
         // Geographic restrictions apply to all target roles:
@@ -315,6 +318,43 @@ namespace Backend.Controllers
                 u.ScopeProvinceId, u.ScopeProvince?.Name, u.ScopeCityId, u.ScopeCity?.Name));
         }
 
+        [HttpGet("{id}/assignment-history")]
+        [Authorize(Roles = UserManagementRoles)]
+        public async Task<IActionResult> GetAssignmentHistory(Guid id)
+        {
+            var user = await _db.Users.FirstOrDefaultAsync(candidate =>
+                candidate.Id == id && candidate.Role != UserRole.FederationRep);
+            if (user == null)
+                return NotFound(new { detail = "کاربر یافت نشد" });
+
+            if (!CanManageTargetScope(
+                    user.ScopeLevel.ToString(), user.ScopeProvinceId, user.ScopeCityId, user.Role.ToString()))
+                return Forbid("شما اجازه مشاهده این کاربر را ندارید");
+
+            var history = await _db.UserAssignmentHistories
+                .Where(entry => entry.UserId == id)
+                .OrderBy(entry => entry.StartedAtUtc == null ? 0 : 1)
+                .ThenBy(entry => entry.StartedAtUtc)
+                .Select(entry => new UserAssignmentHistoryOutDto(
+                    entry.Id,
+                    entry.Role.ToString(),
+                    entry.ScopeLevel.ToString(),
+                    entry.ScopeProvinceId,
+                    entry.ScopeProvince != null ? entry.ScopeProvince.Name : null,
+                    entry.ScopeCityId,
+                    entry.ScopeCity != null ? entry.ScopeCity.Name : null,
+                    entry.StartedAtUtc,
+                    entry.EndedAtUtc,
+                    entry.IsLegacy,
+                    _db.Users
+                        .Where(actor => actor.Id == entry.ChangedByUserId)
+                        .Select(actor => actor.UserName)
+                        .FirstOrDefault()))
+                .ToListAsync();
+
+            return Ok(history);
+        }
+
         [HttpPost]
         [Authorize(Roles = UserManagementRoles)]
         public async Task<IActionResult> Create(UserCreateDto dto)
@@ -355,9 +395,12 @@ namespace Backend.Controllers
                     scopeLevelEnum, dto.ScopeProvinceId, dto.ScopeCityId);
                 existingUser.ScopeCityId = scopeLevelEnum == ScopeLevel.City ? dto.ScopeCityId : null;
 
+                var initialAssignment = _assignmentHistoryService.AddInitialAssignment(
+                    existingUser, CurrentUserId);
                 var updateResult = await _userManager.UpdateAsync(existingUser);
                 if (!updateResult.Succeeded)
                 {
+                    _db.UserAssignmentHistories.Remove(initialAssignment);
                     var errors = string.Join(" / ", updateResult.Errors.Select(e => e.Description));
                     return BadRequest(new { detail = errors });
                 }
@@ -386,9 +429,11 @@ namespace Backend.Controllers
                 EmailConfirmed = true
             };
 
+            var newAssignment = _assignmentHistoryService.AddInitialAssignment(user, CurrentUserId);
             var result = await _userManager.CreateAsync(user, dto.Password);
             if (!result.Succeeded)
             {
+                _db.UserAssignmentHistories.Remove(newAssignment);
                 var errors = string.Join(" / ", result.Errors.Select(e => e.Description));
                 return BadRequest(new { detail = errors });
             }
@@ -598,12 +643,15 @@ namespace Backend.Controllers
                     EmailConfirmed = true
                 };
 
+                var newAssignment = _assignmentHistoryService.AddInitialAssignment(user, CurrentUserId);
                 var result = await _userManager.CreateAsync(user, ImportDefaultPassword);
                 if (result.Succeeded)
                 {
                     created++;
                     continue;
                 }
+
+                _db.UserAssignmentHistories.Remove(newAssignment);
 
                 if (result.Errors.Any(error => error.Code == "DuplicateUserName"))
                 {
@@ -669,6 +717,10 @@ namespace Backend.Controllers
             var scopeError = await ValidateScopeAsync(scopeLevelEnum, dto.ScopeProvinceId, dto.ScopeCityId);
             if (scopeError != null) return BadRequest(new { detail = scopeError });
 
+            var previousRole = user.Role;
+            var previousScopeLevel = user.ScopeLevel;
+            var previousProvinceId = user.ScopeProvinceId;
+            var previousCityId = user.ScopeCityId;
             user.FirstName = dto.FirstName;
             user.LastName = dto.LastName;
             user.Role = roleEnum;
@@ -676,6 +728,15 @@ namespace Backend.Controllers
             user.ScopeProvinceId = await GetScopeProvinceIdAsync(
                 scopeLevelEnum, dto.ScopeProvinceId, dto.ScopeCityId);
             user.ScopeCityId = scopeLevelEnum == ScopeLevel.City ? dto.ScopeCityId : null;
+
+            if (previousRole != user.Role ||
+                previousScopeLevel != user.ScopeLevel ||
+                previousProvinceId != user.ScopeProvinceId ||
+                previousCityId != user.ScopeCityId)
+            {
+                await _assignmentHistoryService.RecordChangeAsync(
+                    user, previousRole, previousScopeLevel, previousProvinceId, previousCityId, CurrentUserId);
+            }
 
             await _db.SaveChangesAsync();
             return Ok(new { success = true });
