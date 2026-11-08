@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Tabs, Select, Typography, Button, Space, Upload, Modal, List, message } from 'antd';
-import { DownloadOutlined, UploadOutlined } from '@ant-design/icons';
+import { useEffect, useState } from 'react';
+import { Tabs, Select, Typography, Button, Space, Upload, Modal, List, message, Input } from 'antd';
+import { DownloadOutlined, UploadOutlined, SearchOutlined } from '@ant-design/icons';
 import { downloadUsersImportTemplate } from '../../../api/users';
 import { useImportUsers } from '../../../hooks/useUsers';
 import { useAuth } from '../../../hooks/useAuth';
@@ -13,12 +13,33 @@ export default function UsersList() {
   const geo = useGeoSections();
   const { role: myRole } = useAuth();
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
   const canManage = ['Admin', 'Manager', 'HumanResourceManager', 'HumanResourceOfficer'].includes(myRole);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [fileList, setFileList] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [importResult, setImportResult] = useState(null);
   const importMutation = useImportUsers();
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [searchInput]);
+
+  const renderSearchInput = () => (
+    <Input
+      allowClear
+      prefix={<SearchOutlined />}
+      placeholder="جستجو بر اساس نام یا نام کاربری"
+      value={searchInput}
+      onChange={(event) => {
+        setSearchInput(event.target.value);
+        setPage(1);
+      }}
+      style={{ width: '100%', maxWidth: 420 }}
+    />
+  );
 
   const handleDownloadTemplate = async () => {
     try {
@@ -53,63 +74,75 @@ export default function UsersList() {
   const items = [
     geo.showMastery && {
       key: 'mastery', label: 'وزارت',
-      children: <UsersTable
-                  filters={{
-                    scopeLevel: 'Mastery'
-                  }}
-                  page={page}
-                  onPageChange={setPage}
-                />,
+      children: (
+        <>
+          <div style={{ marginBottom: 16 }}>{renderSearchInput()}</div>
+          <UsersTable
+            filters={{ scopeLevel: 'Mastery', search }}
+            page={page}
+            onPageChange={setPage}
+          />
+        </>
+      ),
     },
     geo.showProvinceSection && {
       key: 'province', label: 'اداره کل',
       children: (
-          <>
+        <>
+          <Space wrap style={{ width: '100%', marginBottom: 16 }}>
             {/* Hidden entirely (not just disabled) for a Province-scoped
               viewer, matching the City tab's existing pattern — they
               already know which province they're looking at. */}
             {!geo.provinceLocked && (
-                <Select
-                    placeholder="انتخاب استان" style={{ width: 220, marginBottom: 16 }}
-                    value={geo.selectedProvinceId}
-                    onChange={geo.setSelectedProvinceId}
-                    options={geo.provinceOptions?.map((p) => ({ value: p.id, label: p.name }))}
-                />
+              <Select
+                placeholder="انتخاب استان"
+                style={{ width: 220 }}
+                value={geo.selectedProvinceId}
+                onChange={geo.setSelectedProvinceId}
+                options={geo.provinceOptions?.map((p) => ({ value: p.id, label: p.name }))}
+              />
             )}
-            <UsersTable
-              filters={{ 
-                scopeLevel: 'Province',
-                provinceId: geo.selectedProvinceId
-              }}
-              page={page}
-              onPageChange={setPage}
-             />
-          </>
+            {renderSearchInput()}
+          </Space>
+          <UsersTable
+            filters={{
+              scopeLevel: 'Province',
+              provinceId: geo.selectedProvinceId,
+              search,
+            }}
+            page={page}
+            onPageChange={setPage}
+          />
+        </>
       ),
     },
     {
       key: 'city', label: 'شهرستان',
       children: (
-          <>
+        <>
+          <Space wrap style={{ width: '100%', marginBottom: 16 }}>
             {!geo.cityLocked && (
-                <Select
-                    placeholder="ابتدا استان را در بخش «استان» انتخاب کنید"
-                    style={{ width: 220, marginBottom: 16 }}
-                    disabled={!geo.selectedProvinceId}
-                    value={geo.selectedCityId}
-                    onChange={geo.setSelectedCityId}
-                    options={geo.cityOptions?.map((c) => ({ value: c.id, label: c.name }))}
-                />
+              <Select
+                placeholder="ابتدا استان را در بخش «استان» انتخاب کنید"
+                style={{ width: 220 }}
+                disabled={!geo.selectedProvinceId}
+                value={geo.selectedCityId}
+                onChange={geo.setSelectedCityId}
+                options={geo.cityOptions?.map((c) => ({ value: c.id, label: c.name }))}
+              />
             )}
-            <UsersTable 
-              filters={{
-                scopeLevel: 'City',
-                cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId,
-              }}
-              page={page}
-              onPageChange={setPage}
-             />
-          </>
+            {renderSearchInput()}
+          </Space>
+          <UsersTable
+            filters={{
+              scopeLevel: 'City',
+              cityId: geo.cityLocked ? geo.auth.scopeCityId : geo.selectedCityId,
+              search,
+            }}
+            page={page}
+            onPageChange={setPage}
+          />
+        </>
       ),
     },
   ].filter(Boolean);

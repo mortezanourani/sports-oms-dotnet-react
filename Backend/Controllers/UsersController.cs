@@ -210,6 +210,7 @@ namespace Backend.Controllers
             string? scopeLevel,
             Guid? provinceId,
             Guid? cityId,
+            string? search,
             int page = 1,
             int pageSize = 10)
         {
@@ -228,6 +229,23 @@ namespace Backend.Controllers
 
             if (cityId.HasValue) qs = qs.Where(u => u.ScopeCityId == cityId.Value);
             else if (provinceId.HasValue) qs = qs.Where(u => u.ScopeProvinceId == provinceId.Value);
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var escapedSearch = search.Trim()
+                    .Replace("\\", "\\\\")
+                    .Replace("%", "\\%")
+                    .Replace("_", "\\_");
+                var searchPattern = $"%{escapedSearch}%";
+                qs = qs.Where(u =>
+                    EF.Functions.ILike(u.UserName!, searchPattern, "\\") ||
+                    EF.Functions.ILike(u.FirstName ?? "", searchPattern, "\\") ||
+                    EF.Functions.ILike(u.LastName ?? "", searchPattern, "\\") ||
+                    EF.Functions.ILike(
+                        (u.FirstName ?? "") + " " + (u.LastName ?? ""),
+                        searchPattern,
+                        "\\"));
+            }
 
             var myScope = User.ScopeLevel();
             var myProvinceId = User.ScopeProvinceId();
