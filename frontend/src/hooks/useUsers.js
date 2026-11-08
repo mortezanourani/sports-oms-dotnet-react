@@ -16,6 +16,14 @@ export function useUser(id) {
   });
 }
 
+export function useUserAssignmentHistory(id) {
+  return useQuery({
+    queryKey: ['users', id, 'assignment-history'],
+    queryFn: () => api.getUserAssignmentHistory(id),
+    enabled: !!id,
+  });
+}
+
 export function useUserByUsername(username) {
   return useQuery({
     queryKey: ['users', 'username', username],

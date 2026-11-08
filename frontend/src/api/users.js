@@ -2,6 +2,8 @@ import api from './axios';
 
 export const getUsers = async (params) => (await api.get('/users', { params })).data;
 export const getUser = async (id) => (await api.get(`/users/${id}`)).data;
+export const getUserAssignmentHistory = async (id) =>
+  (await api.get(`/users/${id}/assignment-history`)).data;
 export const getUserByUsername = async (username) => (await api.get(`/users/username/${username}`)).data;
 export const createUser = async (payload) => (await api.post('/users', payload)).data;
 export const importUsers = async (file) => {

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
-  Table, Button, Space, Popconfirm, message, Modal, Form,
+  Table, Button, Space, Popconfirm, message, Modal, Form, Alert,
   Input, Select, Tag,
 } from 'antd';
-import { PlusOutlined, EditOutlined, StopOutlined, KeyOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, StopOutlined, KeyOutlined, HistoryOutlined } from '@ant-design/icons';
 import {
-  useUsers, useUser, useCreateUser, useUpdateUser, useDeactivateUser, useResetUserPassword,
+  useUsers, useUser, useUserAssignmentHistory, useCreateUser, useUpdateUser, useDeactivateUser, useResetUserPassword,
 } from '../../../hooks/useUsers';
 import { useProvinces, useCities } from '../../../hooks/useLocations';
 import { useAuth } from '../../../hooks/useAuth';
@@ -24,6 +24,12 @@ const SCOPE_PRIORITY = {
   Province: 1,
   City: 0,
 };
+
+const historyDateFormatter = new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+  timeZone: 'Asia/Tehran',
+  dateStyle: 'short',
+  timeStyle: 'short',
+});
 
 export default function UsersList({ 
   filters,
@@ -45,6 +51,7 @@ export default function UsersList({
   const [modalOpen, setModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [passwordUser, setPasswordUser] = useState(null);
+  const [historyUser, setHistoryUser] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [form] = Form.useForm();
   const [passwordForm] = Form.useForm();
@@ -57,6 +64,11 @@ export default function UsersList({
     ...filters,
   });
   const { data: editingUser, isFetching: isFetchingEditing } = useUser(editingId);
+  const {
+    data: assignmentHistory,
+    isLoading: isLoadingAssignmentHistory,
+    error: assignmentHistoryError,
+  } = useUserAssignmentHistory(historyUser?.id);
   const { data: provinces } = useProvinces();
   const { data: cities } = useCities(selectedProvinceId);
 
@@ -165,6 +177,12 @@ export default function UsersList({
                   onClick={() => openPasswordModal(record)}
                 />
               )}
+              <Button
+                icon={<HistoryOutlined />}
+                size="small"
+                title="سوابق نقش و سطح دسترسی"
+                onClick={() => setHistoryUser(record)}
+              />
               <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(record)} />
               <Popconfirm title="این کاربر غیرفعال شود؟" onConfirm={() => handleDeactivate(record.id)} okText="بله" cancelText="خیر">
                 <Button icon={<StopOutlined />} size="small" danger />
@@ -263,6 +281,65 @@ export default function UsersList({
             </Form.Item>
           )}
         </Form>
+      </Modal>
+
+      <Modal
+        title={`سوابق نقش و سطح دسترسی ${historyUser?.username || ''}`}
+        open={Boolean(historyUser)}
+        onCancel={() => setHistoryUser(null)}
+        footer={null}
+        width={900}
+      >
+        {assignmentHistoryError ? (
+          <Alert
+            type="error"
+            showIcon
+            message={assignmentHistoryError.response?.data?.detail || 'دریافت سوابق کاربر با خطا مواجه شد'}
+          />
+        ) : (
+          <Table
+            size="small"
+            rowKey="id"
+            loading={isLoadingAssignmentHistory}
+            dataSource={assignmentHistory || []}
+            pagination={false}
+            columns={[
+              {
+                title: 'نقش',
+                dataIndex: 'role',
+                render: (role) => ROLE_LABELS[role] || role,
+              },
+              {
+                title: 'سطح دسترسی',
+                render: (_, entry) => {
+                  const scopeLabel = SCOPE_LEVEL_LABELS[entry.scopeLevel] || entry.scopeLevel;
+                  const location = [entry.scopeProvinceName, entry.scopeCityName]
+                    .filter(Boolean)
+                    .join(' / ');
+                  return location ? `${scopeLabel} - ${location}` : scopeLabel;
+                },
+              },
+              {
+                title: 'از تاریخ',
+                dataIndex: 'startedAtUtc',
+                render: (date, entry) => date
+                  ? historyDateFormatter.format(new Date(date))
+                  : entry.isLegacy ? 'نامشخص (پیش از ثبت تاریخچه)' : '—',
+              },
+              {
+                title: 'تا تاریخ',
+                dataIndex: 'endedAtUtc',
+                render: (date) => date ? historyDateFormatter.format(new Date(date)) : 'اکنون',
+              },
+              {
+                title: 'ثبت‌کننده',
+                dataIndex: 'changedByUsername',
+                render: (username, entry) => username || (entry.isLegacy ? 'قدیمی' : '—'),
+              },
+            ]}
+            locale={{ emptyText: 'سابقه‌ای برای این کاربر ثبت نشده است' }}
+          />
+        )}
       </Modal>
 
       <Modal

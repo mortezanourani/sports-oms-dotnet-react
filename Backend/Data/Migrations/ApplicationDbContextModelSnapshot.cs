@@ -709,6 +709,71 @@ namespace Backend.Data.Migrations
                     b.ToTable("refresh_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("Backend.Models.UserAssignmentHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ChangedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("changed_by_user_id");
+
+                    b.Property<DateTimeOffset?>("EndedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ended_at_utc");
+
+                    b.Property<bool>("IsLegacy")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_legacy");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("role");
+
+                    b.Property<Guid?>("ScopeCityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("scope_city_id");
+
+                    b.Property<string>("ScopeLevel")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("scope_level");
+
+                    b.Property<Guid?>("ScopeProvinceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("scope_province_id");
+
+                    b.Property<DateTimeOffset?>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at_utc");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_assignment_histories");
+
+                    b.HasIndex("ScopeCityId")
+                        .HasDatabaseName("ix_user_assignment_histories_scope_city_id");
+
+                    b.HasIndex("ScopeProvinceId")
+                        .HasDatabaseName("ix_user_assignment_histories_scope_province_id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_user_assignment_histories_user_id")
+                        .HasFilter("\"ended_at_utc\" IS NULL");
+
+                    b.HasIndex("UserId", "StartedAtUtc")
+                        .HasDatabaseName("ix_user_assignment_histories_user_id_started_at_utc");
+
+                    b.ToTable("user_assignment_histories", (string)null);
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1089,6 +1154,34 @@ namespace Backend.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_refresh_tokens_users_user_id");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Backend.Models.UserAssignmentHistory", b =>
+                {
+                    b.HasOne("Backend.Models.City", "ScopeCity")
+                        .WithMany()
+                        .HasForeignKey("ScopeCityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_user_assignment_histories_cities_scope_city_id");
+
+                    b.HasOne("Backend.Models.Province", "ScopeProvince")
+                        .WithMany()
+                        .HasForeignKey("ScopeProvinceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_user_assignment_histories_provinces_scope_province_id");
+
+                    b.HasOne("Backend.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_assignment_histories_users_user_id");
+
+                    b.Navigation("ScopeCity");
+
+                    b.Navigation("ScopeProvince");
 
                     b.Navigation("User");
                 });
