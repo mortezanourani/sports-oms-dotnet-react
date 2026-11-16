@@ -38,7 +38,12 @@ const SCOPE_RESTRICTION = {
     City: ['locations'],
 }
 
-const PLACEHOLDER_ITEM = (key, label) => ({ key, label, disabled: true });
+const PLACEHOLDER_ITEM = (key, label) => ({
+    key,
+    label,
+    disabled: true,
+    allowedRoles: ['Admin', 'Manager'],
+});
 
 export default function DashboardLayout() {
     const { role, scopeLevel, fullName } = useAuth();
@@ -100,10 +105,12 @@ export default function DashboardLayout() {
     const notAllowedKeys = SCOPE_RESTRICTION[scopeLevel] || [];
     const visibleItems = ALL_MENU_SECTIONS.map((section) => {
         const children = section.children?.filter((item) =>
-            item.disabled || (allowedKeys.includes(item.key) && !notAllowedKeys.includes(item.key))
+            item.disabled
+                ? item.allowedRoles.includes(role)
+                : allowedKeys.includes(item.key) && !notAllowedKeys.includes(item.key)
         );
         return { ...section, children: children?.length ? children : undefined };
-    });
+    }).filter((section) => section.children?.length);
 
     const handleLogout = () => {
         logout();
