@@ -6,6 +6,7 @@ import { useImportUsers } from '../../../hooks/useUsers';
 import { useAuth } from '../../../hooks/useAuth';
 import { useGeoSections } from '../../../hooks/useGeoSections';
 import UsersTable from './UsersTable';
+import JobPostsPanel from './JobPostsPanel';
 
 const { Title } = Typography;
 
@@ -160,7 +161,10 @@ export default function UsersList() {
             </Button>
           )}
         </div>
-        <Tabs items={items} />
+        <Tabs items={[
+          { key: 'users', label: 'کاربران', children: <Tabs items={items} /> },
+          { key: 'job-posts', label: 'پست‌های سازمانی', children: <JobPostsPanel /> },
+        ]} />
         <Modal
           title="وارد کردن کاربران"
           open={importModalOpen}
