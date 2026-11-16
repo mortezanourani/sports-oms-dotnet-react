@@ -24,6 +24,8 @@ namespace Backend.Data
         public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
         public DbSet<UserAssignmentHistory> UserAssignmentHistories => Set<UserAssignmentHistory>();
+        public DbSet<JobPost> JobPosts => Set<JobPost>();
+        public DbSet<JobPostAssignment> JobPostAssignments => Set<JobPostAssignment>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -34,6 +36,7 @@ namespace Backend.Data
             builder.Entity<ApplicationUser>().Property(u => u.ScopeLevel).HasConversion<string>();
             builder.Entity<UserAssignmentHistory>().Property(h => h.Role).HasConversion<string>();
             builder.Entity<UserAssignmentHistory>().Property(h => h.ScopeLevel).HasConversion<string>();
+            builder.Entity<JobPost>().Property(post => post.PlacementScope).HasConversion<string>();
             builder.Entity<UserAssignmentHistory>()
                 .Property(h => h.EndedAtUtc)
                 .HasColumnName("ended_at_utc");
@@ -144,6 +147,49 @@ namespace Backend.Data
                 .IsUnique()
                 .HasFilter("\"ended_at_utc\" IS NULL");
 
+            builder.Entity<JobPost>()
+                .HasIndex(post => post.Name)
+                .IsUnique();
+
+            builder.Entity<JobPostAssignment>()
+                .Property(assignment => assignment.StartedOn)
+                .HasColumnName("started_on");
+
+            builder.Entity<JobPostAssignment>()
+                .Property(assignment => assignment.EndedOn)
+                .HasColumnName("ended_on");
+
+            builder.Entity<JobPostAssignment>()
+                .HasOne(assignment => assignment.JobPost)
+                .WithMany()
+                .HasForeignKey(assignment => assignment.JobPostId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<JobPostAssignment>()
+                .HasOne(assignment => assignment.User)
+                .WithMany()
+                .HasForeignKey(assignment => assignment.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<JobPostAssignment>()
+                .HasOne(assignment => assignment.Province)
+                .WithMany()
+                .HasForeignKey(assignment => assignment.ProvinceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<JobPostAssignment>()
+                .HasOne(assignment => assignment.City)
+                .WithMany()
+                .HasForeignKey(assignment => assignment.CityId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<JobPostAssignment>()
+                .HasIndex(assignment => new { assignment.UserId, assignment.StartedOn });
+
+            builder.Entity<JobPostAssignment>()
+                .HasIndex(assignment => assignment.UserId)
+                .IsUnique()
+                .HasFilter("\"ended_on\" IS NULL");
         }
     }
 }

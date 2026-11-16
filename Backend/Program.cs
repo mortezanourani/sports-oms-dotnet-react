@@ -78,6 +78,7 @@ builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<ScopeService>();
 builder.Services.AddScoped<FederationPositionService>();
 builder.Services.AddScoped<UserAssignmentHistoryService>();
+builder.Services.AddScoped<JobPostAssignmentService>();
 
 builder.Services.Configure<FileStorageOptions>(builder.Configuration.GetSection("FileStorage"));
 builder.Services.AddScoped<FileStorageService>();
