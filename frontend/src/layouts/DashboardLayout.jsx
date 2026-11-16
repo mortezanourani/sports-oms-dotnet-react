@@ -38,6 +38,8 @@ const SCOPE_RESTRICTION = {
     City: ['locations'],
 }
 
+const PLACEHOLDER_ITEM = (key, label) => ({ key, label, disabled: true });
+
 export default function DashboardLayout() {
     const { role, scopeLevel, fullName } = useAuth();
     const navigate = useNavigate();
@@ -50,26 +52,58 @@ export default function DashboardLayout() {
     }, []);
 
     const { data: unreadData } = useUnreadCount();
-    const ALL_MENU_ITEMS = [
-        { key: 'msyGovFacilities', label: <Link to="/dashboard/msy-gov-facilities">اماکن ورزشی دولتی</Link> },
-        { key: 'privateFacilities', label: <Link to="/dashboard/private-facilities">باشگاه‌های خصوصی</Link> },
-        { key: 'champions', label: <Link to="/dashboard/champions">مدال‌آوران</Link> },
-        { key: 'federations', label: <Link to="/dashboard/federations">فدراسیون‌ها/هیات‌ها</Link> },
-        { key: 'athletes', label: <Link to="/dashboard/athletes">ورزشکاران سازمان‌یافته</Link> },
-        { key: 'locations', label: <Link to="/dashboard/locations">استان‌ها و شهرها</Link> },
-        { key: 'users', label: <Link to="/dashboard/users">امور اداری</Link> },
+    const ALL_MENU_SECTIONS = [
+        {
+            key: 'management',
+            label: 'حوزه مدیریت',
+            children: [
+                PLACEHOLDER_ITEM('technicalOffice', 'دفتر فنی'),
+                PLACEHOLDER_ITEM('legal', 'حقوقی'),
+                PLACEHOLDER_ITEM('publicRelations', 'روابط عمومی'),
+                PLACEHOLDER_ITEM('culturalAffairs', 'امور فرهنگی'),
+                PLACEHOLDER_ITEM('security', 'حراست'),
+            ],
+        },
+        {
+            key: 'resources',
+            label: 'حوزه معاونت توسعه منابع',
+            children: [
+                { key: 'users', label: <Link to="/dashboard/users">امور اداری</Link> },
+                PLACEHOLDER_ITEM('finance', 'مالی'),
+                PLACEHOLDER_ITEM('inspection', 'بازرسی'),
+                { key: 'msyGovFacilities', label: <Link to="/dashboard/msy-gov-facilities">ماده 88</Link> },
+                PLACEHOLDER_ITEM('assets', 'اموال'),
+                PLACEHOLDER_ITEM('informationTechnology', 'فناوری اطلاعات'),
+            ],
+        },
+        {
+            key: 'sports',
+            label: 'حوزه معاونت ورزشی',
+            children: [
+                { key: 'privateFacilities', label: <Link to="/dashboard/private-facilities">امور باشگاه‌ها</Link> },
+                { key: 'federations', label: <Link to="/dashboard/federations">فدراسیون‌ها/هیات‌ها</Link> },
+                { key: 'champions', label: <Link to="/dashboard/champions">قهرمانی</Link> },
+                { key: 'athletes', label: <Link to="/dashboard/athletes">ورزشکاران سازمان‌یافته</Link> },
+            ],
+        },
+        { key: 'youth', label: 'حوزه معاونت جوانان' },
+        {
+            key: 'systemAdministration',
+            label: 'پنل مدیریت سامانه',
+            children: [
+                { key: 'locations', label: <Link to="/dashboard/locations">استان‌ها و شهرها</Link> },
+            ],
+        },
     ];
 
     const allowedKeys = ROLE_MENU[role] || [];
     const notAllowedKeys = SCOPE_RESTRICTION[scopeLevel] || [];
-    const roleItems = ALL_MENU_ITEMS
-        .filter((item) =>
-            allowedKeys.includes(item.key)
+    const visibleItems = ALL_MENU_SECTIONS.map((section) => {
+        const children = section.children?.filter((item) =>
+            item.disabled || (allowedKeys.includes(item.key) && !notAllowedKeys.includes(item.key))
         );
-    const visibleItems = roleItems
-        .filter((item) =>
-            !notAllowedKeys.includes(item.key)
-        );
+        return { ...section, children: children?.length ? children : undefined };
+    });
 
     const handleLogout = () => {
         logout();
@@ -95,9 +129,9 @@ export default function DashboardLayout() {
         >
             <Layout style={{ minHeight: '100vh' }}>
                 <Header style={{ padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Space>
+                    <Space style={{ flex: 1, minWidth: 0 }}>
                         <Text strong style={{ color: 'white' }}>{displayName}</Text>
-                        <Menu theme="dark" mode="horizontal" items={visibleItems} style={{ justifyContent: 'start'}} />
+                        <Menu theme="dark" mode="horizontal" items={visibleItems} style={{ justifyContent: 'start', flex: 1, minWidth: 0 }} />
                     </Space>
                     <Space>
                         <Link to="/dashboard/profile">
