@@ -1,4 +1,4 @@
-import { Outlet, useNavigate, Link } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { Layout, Menu, Button, Typography, Badge, Space, ConfigProvider } from 'antd';
 import {
@@ -48,7 +48,9 @@ const PLACEHOLDER_ITEM = (key, label) => ({
 export default function DashboardLayout() {
     const { role, scopeLevel, fullName } = useAuth();
     const navigate = useNavigate();
+    const { pathname } = useLocation();
     const [displayName, setDisplayName] = useState(fullName);
+    const [selectedSection, setSelectedSection] = useState(null);
 
     useEffect(() => {
         const handleProfileUpdate = (event) => setDisplayName(event.detail.fullName);
@@ -73,10 +75,10 @@ export default function DashboardLayout() {
             key: 'resources',
             label: 'حوزه معاونت توسعه منابع',
             children: [
-                { key: 'users', label: <Link to="/dashboard/users">امور اداری</Link> },
+                { key: 'users', label: 'امور اداری', path: '/dashboard/users' },
                 PLACEHOLDER_ITEM('finance', 'مالی'),
                 PLACEHOLDER_ITEM('inspection', 'بازرسی'),
-                { key: 'msyGovFacilities', label: <Link to="/dashboard/msy-gov-facilities">ماده 88</Link> },
+                { key: 'msyGovFacilities', label: 'ماده 88', path: '/dashboard/msy-gov-facilities' },
                 PLACEHOLDER_ITEM('assets', 'اموال'),
                 PLACEHOLDER_ITEM('informationTechnology', 'فناوری اطلاعات'),
             ],
@@ -85,10 +87,10 @@ export default function DashboardLayout() {
             key: 'sports',
             label: 'حوزه معاونت ورزشی',
             children: [
-                { key: 'privateFacilities', label: <Link to="/dashboard/private-facilities">امور باشگاه‌ها</Link> },
-                { key: 'federations', label: <Link to="/dashboard/federations">فدراسیون‌ها/هیات‌ها</Link> },
-                { key: 'champions', label: <Link to="/dashboard/champions">قهرمانی</Link> },
-                { key: 'athletes', label: <Link to="/dashboard/athletes">ورزشکاران سازمان‌یافته</Link> },
+                { key: 'privateFacilities', label: 'امور باشگاه‌ها', path: '/dashboard/private-facilities' },
+                { key: 'federations', label: 'فدراسیون‌ها/هیات‌ها', path: '/dashboard/federations' },
+                { key: 'champions', label: 'قهرمانی', path: '/dashboard/champions' },
+                { key: 'athletes', label: 'ورزشکاران سازمان‌یافته', path: '/dashboard/athletes' },
             ],
         },
         { key: 'youth', label: 'حوزه معاونت جوانان' },
@@ -96,7 +98,7 @@ export default function DashboardLayout() {
             key: 'systemAdministration',
             label: 'پنل مدیریت سامانه',
             children: [
-                { key: 'locations', label: <Link to="/dashboard/locations">استان‌ها و شهرها</Link> },
+                { key: 'locations', label: 'استان‌ها و شهرها', path: '/dashboard/locations' },
             ],
         },
     ];
@@ -111,6 +113,16 @@ export default function DashboardLayout() {
         );
         return { ...section, children: children?.length ? children : undefined };
     }).filter((section) => section.children?.length);
+    const routeSection = visibleItems.find((section) =>
+        section.children.some((item) => item.path === pathname)
+    );
+    const manuallySelectedSectionKey = selectedSection?.pathname === pathname
+        && visibleItems.some((section) => section.key === selectedSection.key)
+        ? selectedSection.key
+        : undefined;
+    const activeSectionKey = manuallySelectedSectionKey ?? routeSection?.key ?? visibleItems[0]?.key;
+    const activeSection = visibleItems.find((section) => section.key === activeSectionKey);
+    const activeChildKey = activeSection?.children.find((item) => item.path === pathname)?.key;
 
     const handleLogout = () => {
         logout();
@@ -130,27 +142,54 @@ export default function DashboardLayout() {
                         darkItemColor: '#b0d8ff',
                         darkItemSelectedBg: 'transparent',
                         darkItemSelectedColor: '#fff',
+                        itemColor: '#333333',
+                        itemSelectedColor: '#fff',
                     },
                 },
             }}
         >
             <Layout style={{ minHeight: '100vh' }}>
-                <Header style={{ padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Space style={{ flex: 1, minWidth: 0 }}>
-                        <Text strong style={{ color: 'white' }}>{displayName}</Text>
-                        <Menu theme="dark" mode="horizontal" items={visibleItems} style={{ justifyContent: 'start', flex: 1, minWidth: 0 }} />
-                    </Space>
-                    <Space>
-                        <Link to="/dashboard/profile">
-                            <Button style={{ background: 'transparent', color: 'white' }} icon={<UserOutlined />}></Button>
-                        </Link>
-                        <Link to="/dashboard/messages">
-                            <Badge count={unreadData?.unreadCount} size="small" offset={[10, 0]}>
-                                <Button style={{ background: 'transparent', color: 'white' }} icon={<MessageOutlined />}></Button>
-                            </Badge>
-                        </Link>
-                        <Button style={{ background: 'transparent' }} icon={<LogoutOutlined />} onClick={handleLogout} danger></Button>
-                    </Space>
+                <Header style={{ height: 'auto', lineHeight: 'normal', padding: 0, display: 'flex', flexDirection: 'column', position: 'sticky', top: '-48px', zIndex: '999' }}>
+                    <div style={{ minHeight: 48, padding: '0 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                        <Text strong style={{ color: 'white', whiteSpace: 'nowrap' }}>{displayName}</Text>
+                        <div style={{ flex: 1, minWidth: 0, overflowX: 'auto' }}>
+                            <Menu
+                                theme="dark"
+                                mode="horizontal"
+                                selectedKeys={activeSectionKey ? [activeSectionKey] : []}
+                                items={visibleItems.map(({ key, label }) => ({ key, label }))}
+                                onClick={({ key }) => setSelectedSection({ key, pathname })}
+                                style={{ justifyContent: 'start' }}
+                            />
+                        </div>
+                        <Space>
+                            <Link to="/dashboard/profile">
+                                <Button style={{ background: 'transparent', color: 'white' }} icon={<UserOutlined />}></Button>
+                            </Link>
+                            <Link to="/dashboard/messages">
+                                <Badge count={unreadData?.unreadCount} size="small" offset={[10, 0]}>
+                                    <Button style={{ background: 'transparent', color: 'white' }} icon={<MessageOutlined />}></Button>
+                                </Badge>
+                            </Link>
+                            <Button style={{ background: 'transparent' }} icon={<LogoutOutlined />} onClick={handleLogout} danger></Button>
+                        </Space>
+                    </div>
+                    {activeSection && (
+                        <div style={{ padding: '0', background: 'white', display: 'flex', gap: '16px',  overflowX: 'auto' }}>
+                            <Menu
+                                theme="light"
+                                mode="horizontal"
+                                selectedKeys={activeChildKey ? [activeChildKey] : []}
+                                items={activeSection.children.map((item) => ({
+                                    key: item.key,
+                                    label: item.path ? <Link to={item.path}>{item.label}</Link> : item.label,
+                                    disabled: item.disabled,
+                                    style: { padding: '18px 16px 8px' }
+                                }))}
+                                style={{ padding: '0 8px', flexGrow: 1, justifyContent: 'end', background: 'transparent' }}
+                            />
+                        </div>
+                    )}
                 </Header>
                 <Content style={{ margin: 24 }}>
                     <Outlet />
