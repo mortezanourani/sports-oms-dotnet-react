@@ -163,7 +163,7 @@ export default function UsersList() {
         </div>
         <Tabs items={[
           { key: 'users', label: 'کاربران', children: <Tabs items={items} /> },
-          { key: 'job-posts', label: 'پست‌های سازمانی', children: <JobPostsPanel /> },
+          { key: 'job-post-assignments', label: 'تخصیص پست‌های سازمانی', children: <JobPostsPanel variant="assignments" /> },
         ]} />
         <Modal
           title="وارد کردن کاربران"

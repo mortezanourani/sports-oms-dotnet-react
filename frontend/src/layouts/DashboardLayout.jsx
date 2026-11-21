@@ -18,7 +18,7 @@ const { Text } = Typography;
 // the real enforcement always happens server-side regardless of what
 // this object says.
 const ROLE_MENU = {
-    Admin: ['privateFacilities', 'msyGovFacilities', 'champions', 'federations', 'athletes', 'locations', 'users', 'messages'],
+    Admin: ['privateFacilities', 'msyGovFacilities', 'champions', 'federations', 'athletes', 'locations', 'jobPosts', 'users', 'messages'],
     Manager: ['privateFacilities', 'msyGovFacilities', 'champions', 'federations', 'athletes', 'users', 'messages'],
     HumanResourceManager: ['users', 'messages'],
     HumanResourceOfficer: ['users', 'messages'],
@@ -99,6 +99,7 @@ export default function DashboardLayout() {
             label: 'پنل مدیریت سامانه',
             children: [
                 { key: 'locations', label: 'استان‌ها و شهرها', path: '/dashboard/locations' },
+                { key: 'jobPosts', label: 'پست‌های سازمانی', path: '/dashboard/job-posts' },
             ],
         },
     ];

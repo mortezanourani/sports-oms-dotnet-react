@@ -31,7 +31,7 @@ function toDateOnly(value) {
   ].join('-');
 }
 
-export default function JobPostsPanel() {
+export default function JobPostsPanel({ variant = 'both' }) {
   const auth = useAuth();
   const [postForm] = Form.useForm();
   const [assignmentForm] = Form.useForm();
@@ -220,7 +220,7 @@ export default function JobPostsPanel() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {postsError && <Alert type="error" message="دریافت پست‌های شغلی با خطا مواجه شد" />}
-      <section>
+      {variant !== 'assignments' && <section>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <Title level={5} style={{ margin: 0 }}>تعریف پست‌های شغلی</Title>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => showPostModal()}>
@@ -235,9 +235,9 @@ export default function JobPostsPanel() {
           pagination={{ pageSize: 10 }}
           locale={{ emptyText: 'پستی ثبت نشده است' }}
         />
-      </section>
+      </section>}
 
-      <section>
+      {variant !== 'definitions' && <section>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
           <Title level={5} style={{ margin: 0 }}>سوابق تخصیص پست</Title>
           <Button type="primary" onClick={openAssignmentModal} disabled={!assignablePosts.length}>
@@ -287,7 +287,7 @@ export default function JobPostsPanel() {
           pagination={{ pageSize: 10 }}
           locale={{ emptyText: 'سابقه تخصیصی ثبت نشده است' }}
         />
-      </section>
+      </section>}
 
       <Modal
         title={editingPost ? 'ویرایش پست شغلی' : 'افزودن پست شغلی'}
