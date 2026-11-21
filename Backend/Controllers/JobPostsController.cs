@@ -11,7 +11,7 @@ namespace Backend.Controllers
 {
     [ApiController]
     [Route("api/job-posts")]
-    [Authorize(Roles = "Admin,Manager,HumanResourceManager,HumanResourceOfficer")]
+    [Authorize]
     public class JobPostsController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -44,6 +44,7 @@ namespace Backend.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Create(JobPostUpsertDto dto)
         {
             if (!TryParseJobPost(dto, out var name, out var placementScope, out var error))
@@ -67,6 +68,7 @@ namespace Backend.Controllers
         }
 
         [HttpPut("{id:guid}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Update(Guid id, JobPostUpsertDto dto)
         {
             var post = await _db.JobPosts.FindAsync(id);
@@ -98,6 +100,7 @@ namespace Backend.Controllers
         }
 
         [HttpGet("assignments")]
+        [Authorize(Roles = "Admin,Manager,HumanResourceManager,HumanResourceOfficer")]
         public async Task<IActionResult> ListAssignments(
             Guid? jobPostId,
             Guid? provinceId,
@@ -162,6 +165,7 @@ namespace Backend.Controllers
         }
 
         [HttpPost("assignments")]
+        [Authorize(Roles = "Admin,Manager,HumanResourceManager,HumanResourceOfficer")]
         public async Task<IActionResult> Assign(JobPostAssignmentCreateDto dto)
         {
             var post = await _db.JobPosts.FindAsync(dto.JobPostId);
@@ -197,6 +201,7 @@ namespace Backend.Controllers
         }
 
         [HttpPost("assignments/{id:guid}/end")]
+        [Authorize(Roles = "Admin,Manager,HumanResourceManager,HumanResourceOfficer")]
         public async Task<IActionResult> EndAssignment(Guid id, JobPostAssignmentEndDto dto)
         {
             var assignment = await _db.JobPostAssignments
