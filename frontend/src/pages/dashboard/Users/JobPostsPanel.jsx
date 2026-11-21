@@ -122,11 +122,15 @@ export default function JobPostsPanel({ variant = 'both' }) {
 
   const assignUser = async (values) => {
     try {
+      const selectedPost = posts.find((post) => post.id === values.jobPostId);
+      const cityId = selectedPost?.placementScope === 'Province'
+        ? null
+        : values.cityId || null;
       await assignMutation.mutateAsync({
         jobPostId: values.jobPostId,
         userId: values.userId,
         provinceId: values.provinceId,
-        cityId: values.cityId || null,
+        cityId,
         startedOn: toDateOnly(values.startedOn),
       });
       message.success('تخصیص پست با موفقیت ثبت شد');
@@ -210,12 +214,15 @@ export default function JobPostsPanel({ variant = 'both' }) {
     value: user.id,
     label: `${user.firstName} ${user.lastName} (${user.username})`,
   }));
-  const assignablePosts = posts.filter((post) => post.isActive);
+  const assignablePosts = posts.filter((post) => {
+    if (!post.isActive) return false;
+    if (auth.scopeLevel === 'City') return post.placementScope !== 'Province';
+    return true;
+  });
   const selectedAssignmentPost = assignablePosts.find((post) => post.id === assignmentPostId);
   const cityAssignmentRequired = selectedAssignmentPost?.placementScope === 'City' ||
     auth.scopeLevel === 'City';
-  const cityAssignmentAllowed = selectedAssignmentPost?.placementScope !== 'Province' &&
-    auth.scopeLevel !== 'City';
+  const cityAssignmentAllowed = selectedAssignmentPost?.placementScope !== 'Province';
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -365,7 +372,7 @@ export default function JobPostsPanel({ variant = 'both' }) {
             </Form.Item>
           )}
           {!cityAssignmentAllowed ? (
-            <Form.Item name="cityId" hidden rules={[{ required: true }]}>
+            <Form.Item name="cityId" hidden>
               <Input />
             </Form.Item>
           ) : (
