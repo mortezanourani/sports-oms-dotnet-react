@@ -171,6 +171,12 @@ namespace Backend.Controllers
             var post = await _db.JobPosts.FindAsync(dto.JobPostId);
             if (post == null) return BadRequest(new { detail = "پست انتخاب‌شده معتبر نیست" });
 
+            var isProvinceAssignment = !dto.CityId.HasValue;
+            if (post.PlacementScope == JobPostPlacementScope.Province && !isProvinceAssignment)
+                return BadRequest(new { detail = "پست استانی فقط در سطح استان قابل تخصیص است" });
+            if (post.PlacementScope == JobPostPlacementScope.City && isProvinceAssignment)
+                return BadRequest(new { detail = "پست شهری فقط در سطح شهرستان قابل تخصیص است" });
+
             var user = await _db.Users.FirstOrDefaultAsync(candidate =>
                 candidate.Id == dto.UserId && candidate.Role != UserRole.FederationRep);
             if (user == null) return BadRequest(new { detail = "کاربر انتخاب‌شده معتبر نیست" });

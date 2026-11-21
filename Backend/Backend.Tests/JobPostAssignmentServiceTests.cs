@@ -162,6 +162,35 @@ public class JobPostAssignmentServiceTests
     }
 
     [Fact]
+    public async Task AssignAsync_AllowsProvincePostWithoutCity()
+    {
+        await using var db = CreateDbContext();
+        var provincePost = new JobPost
+        {
+            Id = Guid.NewGuid(),
+            Name = "Province post",
+            PlacementScope = JobPostPlacementScope.Province,
+            IsActive = true
+        };
+        var user = new ApplicationUser { Id = Guid.NewGuid() };
+        db.JobPosts.Add(provincePost);
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var provinceId = Guid.NewGuid();
+        var startedOn = DateOnly.FromDateTime(TehranDateTime.TodayUtc).AddDays(-1);
+        var service = new JobPostAssignmentService(db);
+
+        var result = await service.AssignAsync(
+            provincePost, user, provinceId, null, startedOn, Guid.NewGuid());
+
+        Assert.Null(result.Error);
+        Assert.NotNull(result.Assignment);
+        Assert.Equal(provinceId, result.Assignment.ProvinceId);
+        Assert.Null(result.Assignment.CityId);
+    }
+
+    [Fact]
     public async Task AssignAsync_RejectsFutureStartAndUnsupportedPlacement()
     {
         await using var db = CreateDbContext();
