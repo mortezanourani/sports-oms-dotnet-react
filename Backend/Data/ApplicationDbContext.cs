@@ -25,6 +25,7 @@ namespace Backend.Data
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
         public DbSet<UserAssignmentHistory> UserAssignmentHistories => Set<UserAssignmentHistory>();
         public DbSet<JobPost> JobPosts => Set<JobPost>();
+        public DbSet<JobPostType> JobPostTypes => Set<JobPostType>();
         public DbSet<JobPostAssignment> JobPostAssignments => Set<JobPostAssignment>();
 
         protected override void OnModelCreating(ModelBuilder builder)

@@ -539,6 +539,24 @@ namespace Backend.Data.Migrations
                     b.ToTable("job_posts", (string)null);
                 });
 
+            modelBuilder.Entity("Backend.Models.JobPostType", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id")
+                        .HasName("pk_job_post_types");
+
+                    b.ToTable("job_post_types", (string)null);
+                });
+
             modelBuilder.Entity("Backend.Models.JobPostAssignment", b =>
                 {
                     b.Property<Guid>("Id")
