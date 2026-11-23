@@ -774,6 +774,35 @@ namespace Backend.Data.Migrations
                     b.ToTable("message_recipients", (string)null);
                 });
 
+            modelBuilder.Entity("Backend.Models.OrgUnit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ParentOrgUnitId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_org_unit_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id")
+                        .HasName("pk_org_units");
+
+                    b.HasIndex("ParentOrgUnitId")
+                        .HasDatabaseName("ix_org_units_parent_org_unit_id");
+
+                    b.HasIndex("Title")
+                        .IsUnique()
+                        .HasDatabaseName("ix_org_units_title");
+
+                    b.ToTable("org_units", (string)null);
+                });
+
             modelBuilder.Entity("Backend.Models.Province", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1300,6 +1329,17 @@ namespace Backend.Data.Migrations
                     b.Navigation("Recipient");
                 });
 
+            modelBuilder.Entity("Backend.Models.OrgUnit", b =>
+                {
+                    b.HasOne("Backend.Models.OrgUnit", "ParentOrgUnit")
+                        .WithMany("ChildOrgUnits")
+                        .HasForeignKey("ParentOrgUnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_org_units_org_units_parent_org_unit_id");
+
+                    b.Navigation("ParentOrgUnit");
+                });
+
             modelBuilder.Entity("Backend.Models.RefreshToken", b =>
                 {
                     b.HasOne("Backend.Models.ApplicationUser", "User")
@@ -1423,6 +1463,11 @@ namespace Backend.Data.Migrations
                     b.Navigation("Attachments");
 
                     b.Navigation("Recipients");
+                });
+
+            modelBuilder.Entity("Backend.Models.OrgUnit", b =>
+                {
+                    b.Navigation("ChildOrgUnits");
                 });
 
             modelBuilder.Entity("Backend.Models.Province", b =>

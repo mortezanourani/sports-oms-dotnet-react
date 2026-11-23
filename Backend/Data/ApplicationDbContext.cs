@@ -27,6 +27,7 @@ namespace Backend.Data
         public DbSet<JobPost> JobPosts => Set<JobPost>();
         public DbSet<JobPostType> JobPostTypes => Set<JobPostType>();
         public DbSet<JobPostAssignment> JobPostAssignments => Set<JobPostAssignment>();
+        public DbSet<OrgUnit> OrgUnits => Set<OrgUnit>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -103,6 +104,16 @@ namespace Backend.Data
                 .WithMany(f => f.ChildFederations)
                 .HasForeignKey(f => f.ParentFederationId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<OrgUnit>()
+                .HasOne(unit => unit.ParentOrgUnit)
+                .WithMany(unit => unit.ChildOrgUnits)
+                .HasForeignKey(unit => unit.ParentOrgUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<OrgUnit>()
+                .HasIndex(unit => unit.Title)
+                .IsUnique();
 
             builder.Entity<Federation>()
                 .HasOne(f => f.Province)
