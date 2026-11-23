@@ -55,6 +55,10 @@ namespace Backend.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("first_name");
 
+                    b.Property<string>("IdCode")
+                        .HasColumnType("text")
+                        .HasColumnName("id_code");
+
                     b.Property<int?>("Gender")
                         .HasColumnType("integer")
                         .HasColumnName("gender");
