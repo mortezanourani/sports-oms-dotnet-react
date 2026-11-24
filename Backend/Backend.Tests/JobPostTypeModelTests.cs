@@ -17,9 +17,13 @@ public class JobPostTypeModelTests
         using var context = new ApplicationDbContext(options);
 
         var entity = context.Model.FindEntityType(typeof(JobPostType))!;
+        var titleIndex = Assert.Single(
+            entity.GetIndexes(),
+            index => index.Properties.Single().Name == nameof(JobPostType.Title));
 
         Assert.Equal("job_post_types", entity.GetTableName());
         Assert.Equal(nameof(JobPostType.Id), Assert.Single(entity.FindPrimaryKey()!.Properties).Name);
         Assert.False(entity.FindProperty(nameof(JobPostType.Title))!.IsNullable);
+        Assert.True(titleIndex.IsUnique);
     }
 }

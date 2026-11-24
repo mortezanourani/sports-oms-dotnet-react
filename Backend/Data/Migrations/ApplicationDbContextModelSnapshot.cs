@@ -573,6 +573,10 @@ namespace Backend.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_job_post_types");
 
+                    b.HasIndex("Title")
+                        .IsUnique()
+                        .HasDatabaseName("ix_job_post_types_title");
+
                     b.ToTable("job_post_types", (string)null);
                 });
 

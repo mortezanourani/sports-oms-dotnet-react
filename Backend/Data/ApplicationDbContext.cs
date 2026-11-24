@@ -164,6 +164,10 @@ namespace Backend.Data
                 .HasIndex(post => post.Title)
                 .IsUnique();
 
+            builder.Entity<JobPostType>()
+                .HasIndex(type => type.Title)
+                .IsUnique();
+
             builder.Entity<JobPost>()
                 .HasOne(post => post.JobPostType)
                 .WithMany()
