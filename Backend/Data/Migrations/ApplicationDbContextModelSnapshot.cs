@@ -781,6 +781,11 @@ namespace Backend.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("scope");
+
                     b.Property<Guid?>("ParentOrgUnitId")
                         .HasColumnType("uuid")
                         .HasColumnName("parent_org_unit_id");
@@ -789,6 +794,11 @@ namespace Backend.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("title");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("type");
 
                     b.HasKey("Id")
                         .HasName("pk_org_units");

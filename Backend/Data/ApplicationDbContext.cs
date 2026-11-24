@@ -39,6 +39,8 @@ namespace Backend.Data
             builder.Entity<UserAssignmentHistory>().Property(h => h.Role).HasConversion<string>();
             builder.Entity<UserAssignmentHistory>().Property(h => h.ScopeLevel).HasConversion<string>();
             builder.Entity<JobPost>().Property(post => post.PlacementScope).HasConversion<string>();
+            builder.Entity<OrgUnit>().Property(unit => unit.Type).HasConversion<string>();
+            builder.Entity<OrgUnit>().Property(unit => unit.Scope).HasConversion<string>();
             builder.Entity<UserAssignmentHistory>()
                 .Property(h => h.EndedAtUtc)
                 .HasColumnName("ended_at_utc");
