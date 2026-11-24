@@ -26,7 +26,6 @@ namespace Backend.Data
         public DbSet<UserAssignmentHistory> UserAssignmentHistories => Set<UserAssignmentHistory>();
         public DbSet<JobPost> JobPosts => Set<JobPost>();
         public DbSet<JobPostType> JobPostTypes => Set<JobPostType>();
-        public DbSet<JobPostAssignment> JobPostAssignments => Set<JobPostAssignment>();
         public DbSet<OrgUnit> OrgUnits => Set<OrgUnit>();
 
         protected override void OnModelCreating(ModelBuilder builder)
@@ -38,7 +37,7 @@ namespace Backend.Data
             builder.Entity<ApplicationUser>().Property(u => u.ScopeLevel).HasConversion<string>();
             builder.Entity<UserAssignmentHistory>().Property(h => h.Role).HasConversion<string>();
             builder.Entity<UserAssignmentHistory>().Property(h => h.ScopeLevel).HasConversion<string>();
-            builder.Entity<JobPost>().Property(post => post.PlacementScope).HasConversion<string>();
+            builder.Entity<JobPost>().Property(post => post.ManagerType).HasConversion<string>();
             builder.Entity<OrgUnit>().Property(unit => unit.Type).HasConversion<string>();
             builder.Entity<OrgUnit>().Property(unit => unit.Scope).HasConversion<string>();
             builder.Entity<UserAssignmentHistory>()
@@ -162,48 +161,20 @@ namespace Backend.Data
                 .HasFilter("\"ended_at_utc\" IS NULL");
 
             builder.Entity<JobPost>()
-                .HasIndex(post => post.Name)
+                .HasIndex(post => post.Title)
                 .IsUnique();
 
-            builder.Entity<JobPostAssignment>()
-                .Property(assignment => assignment.StartedOn)
-                .HasColumnName("started_on");
-
-            builder.Entity<JobPostAssignment>()
-                .Property(assignment => assignment.EndedOn)
-                .HasColumnName("ended_on");
-
-            builder.Entity<JobPostAssignment>()
-                .HasOne(assignment => assignment.JobPost)
+            builder.Entity<JobPost>()
+                .HasOne(post => post.JobPostType)
                 .WithMany()
-                .HasForeignKey(assignment => assignment.JobPostId)
+                .HasForeignKey(post => post.JobPostTypeId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            builder.Entity<JobPostAssignment>()
-                .HasOne(assignment => assignment.User)
+            builder.Entity<JobPost>()
+                .HasOne(post => post.OrgUnit)
                 .WithMany()
-                .HasForeignKey(assignment => assignment.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            builder.Entity<JobPostAssignment>()
-                .HasOne(assignment => assignment.Province)
-                .WithMany()
-                .HasForeignKey(assignment => assignment.ProvinceId)
+                .HasForeignKey(post => post.OrgUnitId)
                 .OnDelete(DeleteBehavior.Restrict);
-
-            builder.Entity<JobPostAssignment>()
-                .HasOne(assignment => assignment.City)
-                .WithMany()
-                .HasForeignKey(assignment => assignment.CityId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            builder.Entity<JobPostAssignment>()
-                .HasIndex(assignment => new { assignment.UserId, assignment.StartedOn });
-
-            builder.Entity<JobPostAssignment>()
-                .HasIndex(assignment => assignment.UserId)
-                .IsUnique()
-                .HasFilter("\"ended_on\" IS NULL");
         }
     }
 }
