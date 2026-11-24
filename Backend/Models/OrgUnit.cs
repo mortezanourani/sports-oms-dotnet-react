@@ -18,9 +18,9 @@ namespace Backend.Models
 
     public enum OrgUnitScope
     {
-        [Display(Name = "Provincial (استانی)")]
+        [Display(Name = "استانی")]
         Provincial,
-        [Display(Name = "City (شهرستانی)")]
+        [Display(Name = "شهرستانی")]
         City
     }
 
