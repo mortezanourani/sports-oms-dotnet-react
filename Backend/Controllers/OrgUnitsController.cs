@@ -327,10 +327,10 @@ namespace Backend.Controllers
 
             foreach (var field in typeof(TEnum).GetFields(BindingFlags.Public | BindingFlags.Static))
             {
-                if (string.Equals(
-                    field.GetCustomAttribute<DisplayAttribute>()?.GetName(),
-                    normalizedValue,
-                    StringComparison.Ordinal))
+                var displayName = field.GetCustomAttribute<DisplayAttribute>()?.GetName();
+                if (string.Equals(displayName, normalizedValue, StringComparison.Ordinal) ||
+                    displayName != null &&
+                    string.Equals($"{field.Name} ({displayName})", normalizedValue, StringComparison.Ordinal))
                 {
                     result = (TEnum)field.GetValue(null)!;
                     return true;

@@ -52,7 +52,7 @@ public class OrgUnitModelTests
             .Cast<DisplayAttribute>()
             .Single()
             .Name);
-        Assert.Equal("Provincial (استانی)", typeof(OrgUnitScope)
+        Assert.Equal("استانی", typeof(OrgUnitScope)
             .GetMember(nameof(OrgUnitScope.Provincial))[0]
             .GetCustomAttributes(typeof(DisplayAttribute), false)
             .Cast<DisplayAttribute>()

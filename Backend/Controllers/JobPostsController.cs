@@ -1,6 +1,8 @@
 using Backend.Data;
 using Backend.DTOs;
 using Backend.Models;
+using Backend.Services;
+using DocumentFormat.OpenXml.Packaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -97,6 +99,121 @@ namespace Backend.Controllers
             return Ok(ToOutDto(post));
         }
 
+        [HttpGet("import/template")]
+        [Authorize(Roles = "Admin")]
+        public IActionResult DownloadImportTemplate() =>
+            File(
+                JobPostImportWorkbook.CreateTemplate(),
+                JobPostImportWorkbook.ContentType,
+                "job-posts-import-template.xlsx");
+
+        [HttpPost("import")]
+        [Authorize(Roles = "Admin")]
+        [RequestSizeLimit(10_000_000)]
+        public async Task<IActionResult> Import([FromForm] IFormFile? file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { detail = "لطفا فایل اکسل را انتخاب کنید" });
+            if (!string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { detail = "فرمت فایل باید Excel (.xlsx) باشد" });
+
+            IReadOnlyList<JobPostImportRow> rows;
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                rows = JobPostImportWorkbook.Read(stream);
+            }
+            catch (InvalidDataException ex)
+            {
+                return BadRequest(new { detail = ex.Message });
+            }
+            catch (ArgumentException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست" });
+            }
+            catch (IOException)
+            {
+                return BadRequest(new { detail = "خواندن فایل اکسل با خطا مواجه شد" });
+            }
+            catch (OpenXmlPackageException)
+            {
+                return BadRequest(new { detail = "فایل اکسل معتبر نیست" });
+            }
+
+            var jobPostTypes = await _db.JobPostTypes
+                .Select(type => new { type.Id, type.Title })
+                .ToDictionaryAsync(type => type.Title, type => type.Id, StringComparer.Ordinal);
+            var orgUnits = await _db.OrgUnits
+                .Select(unit => new { unit.Id, unit.Title })
+                .ToDictionaryAsync(unit => unit.Title, unit => unit.Id, StringComparer.Ordinal);
+            var knownTitles = new HashSet<string>(
+                await _db.JobPosts.Select(post => post.Title).ToListAsync(),
+                StringComparer.Ordinal);
+            var errors = new List<JobPostImportErrorDto>();
+            var created = 0;
+            var skippedExisting = 0;
+
+            foreach (var row in rows)
+            {
+                var title = row.Title?.Trim() ?? string.Empty;
+                var typeCode = row.TypeCode?.Trim() ?? string.Empty;
+                if (title.Length is 0 or > 160)
+                {
+                    errors.Add(new JobPostImportErrorDto(
+                        row.RowNumber,
+                        "عنوان پست الزامی است و باید حداکثر ۱۶۰ نویسه باشد."));
+                    continue;
+                }
+                if (typeCode.Length == 0)
+                {
+                    errors.Add(new JobPostImportErrorDto(row.RowNumber, "کد نوع پست الزامی است."));
+                    continue;
+                }
+                if (!jobPostTypes.TryGetValue(row.JobPostTypeTitle?.Trim() ?? string.Empty, out var jobPostTypeId))
+                {
+                    errors.Add(new JobPostImportErrorDto(row.RowNumber, "نوع پست با این عنوان یافت نشد."));
+                    continue;
+                }
+                if (!orgUnits.TryGetValue(row.OrgUnitTitle?.Trim() ?? string.Empty, out var orgUnitId))
+                {
+                    errors.Add(new JobPostImportErrorDto(row.RowNumber, "واحد سازمانی با این عنوان یافت نشد."));
+                    continue;
+                }
+                if (!TryParseManagerType(row.ManagerType, out var managerType))
+                {
+                    errors.Add(new JobPostImportErrorDto(row.RowNumber, "نوع مدیر حرفه‌ای معتبر نیست."));
+                    continue;
+                }
+                if (!TryParseBreakOut(row.BreakOut, out var breakOut))
+                {
+                    errors.Add(new JobPostImportErrorDto(
+                        row.RowNumber,
+                        "مقدار شکسته‌شده باید true، false یا خالی باشد."));
+                    continue;
+                }
+                if (!knownTitles.Add(title))
+                {
+                    skippedExisting++;
+                    continue;
+                }
+
+                _db.JobPosts.Add(new JobPost
+                {
+                    Id = Guid.NewGuid(),
+                    JobPostTypeId = jobPostTypeId,
+                    OrgUnitId = orgUnitId,
+                    TypeCode = typeCode,
+                    Title = title,
+                    ManagerType = managerType,
+                    BreakOut = breakOut
+                });
+                created++;
+            }
+
+            await _db.SaveChangesAsync();
+            return Ok(new JobPostImportResultDto(created, skippedExisting, errors.Count, errors));
+        }
+
         private async Task<bool> ReferencesExistAsync(Guid jobPostTypeId, Guid orgUnitId) =>
             await _db.JobPostTypes.AnyAsync(type => type.Id == jobPostTypeId) &&
             await _db.OrgUnits.AnyAsync(unit => unit.Id == orgUnitId);
@@ -133,6 +250,59 @@ namespace Backend.Controllers
 
             error = string.Empty;
             return true;
+        }
+
+        private static bool TryParseManagerType(string? value, out JobPostManagerType managerType)
+        {
+            if (Enum.TryParse(value, true, out managerType) && Enum.IsDefined(managerType))
+                return true;
+
+            foreach (var field in typeof(JobPostManagerType).GetFields(
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+            {
+                if (string.Equals(
+                    field.GetCustomAttributes(typeof(System.ComponentModel.DataAnnotations.DisplayAttribute), false)
+                        .Cast<System.ComponentModel.DataAnnotations.DisplayAttribute>()
+                        .SingleOrDefault()?.GetName(),
+                    value?.Trim(),
+                    StringComparison.Ordinal))
+                {
+                    managerType = (JobPostManagerType)field.GetValue(null)!;
+                    return true;
+                }
+            }
+
+            managerType = default;
+            return false;
+        }
+
+        private static bool TryParseBreakOut(string? value, out bool? breakOut)
+        {
+            var normalizedValue = value?.Trim();
+            if (string.IsNullOrEmpty(normalizedValue) ||
+                string.Equals(normalizedValue, "null", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalizedValue, "نامشخص", StringComparison.Ordinal))
+            {
+                breakOut = null;
+                return true;
+            }
+
+            if (string.Equals(normalizedValue, "true", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalizedValue, "بله", StringComparison.Ordinal))
+            {
+                breakOut = true;
+                return true;
+            }
+
+            if (string.Equals(normalizedValue, "false", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalizedValue, "خیر", StringComparison.Ordinal))
+            {
+                breakOut = false;
+                return true;
+            }
+
+            breakOut = null;
+            return false;
         }
 
         private static JobPostOutDto ToOutDto(JobPost post) =>
