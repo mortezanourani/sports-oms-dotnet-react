@@ -8,6 +8,15 @@ export const createJobPost = async (payload) =>
 export const updateJobPost = async ({ id, payload }) =>
   (await api.put(`/job-posts/${id}`, payload)).data;
 
+export const importJobPosts = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return (await api.post('/job-posts/import', formData)).data;
+};
+
+export const downloadJobPostsImportTemplate = async () =>
+    (await api.get('/job-posts/import/template', { responseType: 'blob' })).data;
+
 export const getJobPostAssignments = async (params) =>
   (await api.get('/job-posts/assignments', { params })).data;
 

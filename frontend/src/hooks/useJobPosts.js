@@ -28,6 +28,14 @@ export function useUpdateJobPost() {
   });
 }
 
+export function useImportJobPosts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.importJobPosts,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobPosts'] }),
+  });
+}
+
 export function useAssignJobPost() {
   const queryClient = useQueryClient();
   return useMutation({
