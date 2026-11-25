@@ -9,6 +9,7 @@ import { downloadOrgUnitsImportTemplate } from '../../../api/orgUnits';
 import {
     useCreateOrgUnit, useImportOrgUnits, useOrgUnits, useUpdateOrgUnit,
 } from '../../../hooks/useOrgUnits';
+import { useCities, useProvinces } from '../../../hooks/useLocations';
 
 const { Title } = Typography;
 
@@ -30,7 +31,11 @@ const SCOPE_LABELS = Object.fromEntries(SCOPE_OPTIONS.map(({ value, label }) => 
 
 export default function OrgUnitsPage() {
     const { data: orgUnits = [], isLoading } = useOrgUnits();
+    const { data: provinces = [] } = useProvinces();
     const [form] = Form.useForm();
+    const selectedScope = Form.useWatch('scope', form);
+    const selectedProvinceId = Form.useWatch('provinceId', form);
+    const { data: cities = [] } = useCities(selectedProvinceId);
     const [formOpen, setFormOpen] = useState(false);
     const [importOpen, setImportOpen] = useState(false);
     const [editingUnit, setEditingUnit] = useState(null);
@@ -83,6 +88,8 @@ export default function OrgUnitsPage() {
             title: unit.title,
             type: unit.type,
             scope: unit.scope,
+            provinceId: unit.provinceId,
+            cityId: unit.cityId || undefined,
             parentOrgUnitId: unit.parentOrgUnitId || '',
         });
         setFormOpen(true);
@@ -93,6 +100,8 @@ export default function OrgUnitsPage() {
             title: values.title,
             type: values.type,
             scope: values.scope,
+            provinceId: values.provinceId,
+            cityId: values.scope === 'City' ? values.cityId : null,
             parentOrgUnitId: values.parentOrgUnitId || null,
         };
         try {
@@ -151,6 +160,8 @@ export default function OrgUnitsPage() {
             key: 'scope',
             render: (scope) => SCOPE_LABELS[scope] || scope,
         },
+        { title: 'استان', dataIndex: 'provinceName', key: 'provinceName' },
+        { title: 'شهرستان', dataIndex: 'cityName', key: 'cityName' },
         { title: 'واحد سازمانی والد', dataIndex: 'parentOrgUnitTitle', key: 'parentOrgUnitTitle' },
         {
             title: 'عملیات',
@@ -223,8 +234,45 @@ export default function OrgUnitsPage() {
                         label="دامنه"
                         rules={[{ required: true, message: 'دامنه را انتخاب کنید' }]}
                     >
-                        <Select options={SCOPE_OPTIONS} />
+                        <Select
+                            options={SCOPE_OPTIONS}
+                            onChange={(scope) => {
+                                if (scope === 'Provincial') form.setFieldValue('cityId', undefined);
+                            }}
+                        />
                     </Form.Item>
+                    <Form.Item
+                        name="provinceId"
+                        label="استان"
+                        rules={[{ required: true, message: 'استان را انتخاب کنید' }]}
+                    >
+                        <Select
+                            showSearch
+                            optionFilterProp="label"
+                            options={provinces.map((province) => ({
+                                value: province.id,
+                                label: province.name,
+                            }))}
+                            onChange={() => form.setFieldValue('cityId', undefined)}
+                        />
+                    </Form.Item>
+                    {selectedScope === 'City' && (
+                        <Form.Item
+                            name="cityId"
+                            label="شهرستان"
+                            rules={[{ required: true, message: 'شهرستان را انتخاب کنید' }]}
+                        >
+                            <Select
+                                showSearch
+                                optionFilterProp="label"
+                                disabled={!selectedProvinceId}
+                                options={cities.map((city) => ({
+                                    value: city.id,
+                                    label: city.name,
+                                }))}
+                            />
+                        </Form.Item>
+                    )}
                     <Form.Item name="parentOrgUnitId" label="واحد سازمانی والد">
                         <Select
                             showSearch
@@ -253,6 +301,10 @@ export default function OrgUnitsPage() {
                 maskClosable={!importMutation.isPending}
             >
                 <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                    <Typography.Text>
+                        استان و شهرستان را با نام ثبت‌شده وارد کنید. برای دامنه استانی، ستون شهرستان خالی باشد؛
+                        برای دامنه شهرستانی، نام شهرستان باید در همان استان وجود داشته باشد.
+                    </Typography.Text>
                     <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>
                         دانلود فایل قالب
                     </Button>
