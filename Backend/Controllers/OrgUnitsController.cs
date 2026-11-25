@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using Backend.Data;
 using Backend.DTOs;
+using Backend.Extensions;
 using Backend.Models;
 using Backend.Services;
 using DocumentFormat.OpenXml.Packaging;
@@ -30,6 +31,10 @@ namespace Backend.Controllers
                     unit.Title,
                     unit.Type.ToString(),
                     unit.Scope.ToString(),
+                    unit.ProvinceId,
+                    unit.Province.Name,
+                    unit.CityId,
+                    unit.City == null ? null : unit.City.Name,
                     unit.ParentOrgUnitId,
                     unit.ParentOrgUnit == null ? null : unit.ParentOrgUnit.Title))
                 .ToListAsync();
@@ -41,6 +46,11 @@ namespace Backend.Controllers
         {
             if (!TryParse(dto, out var title, out var type, out var scope, out var error))
                 return BadRequest(new { detail = error });
+            var geographyError = await ValidateGeographyAsync(scope, dto.ProvinceId, dto.CityId);
+            if (geographyError.Forbidden)
+                return Forbid();
+            if (geographyError.Error != null)
+                return BadRequest(new { detail = geographyError.Error });
 
             if (await _db.OrgUnits.AnyAsync(unit => unit.Title == title))
                 return Conflict(new { detail = "واحد سازمانی با این عنوان قبلا ثبت شده است" });
@@ -54,6 +64,8 @@ namespace Backend.Controllers
                 Title = title,
                 Type = type,
                 Scope = scope,
+                ProvinceId = dto.ProvinceId,
+                CityId = dto.CityId,
                 ParentOrgUnitId = dto.ParentOrgUnitId
             };
             _db.OrgUnits.Add(unit);
@@ -64,7 +76,14 @@ namespace Backend.Controllers
                     .Select(candidate => candidate.Title)
                     .SingleOrDefaultAsync()
                 : null;
-            return CreatedAtAction(nameof(List), ToOutDto(unit, parentTitle));
+            var provinceName = await _db.Provinces
+                .Where(province => province.Id == unit.ProvinceId)
+                .Select(province => province.Name)
+                .SingleAsync();
+            var cityName = unit.CityId.HasValue
+                ? await _db.Cities.Where(city => city.Id == unit.CityId).Select(city => city.Name).SingleAsync()
+                : null;
+            return CreatedAtAction(nameof(List), ToOutDto(unit, provinceName, cityName, parentTitle));
         }
 
         [HttpPut("{id:guid}")]
@@ -76,6 +95,11 @@ namespace Backend.Controllers
 
             if (!TryParse(dto, out var title, out var type, out var scope, out var error))
                 return BadRequest(new { detail = error });
+            var geographyError = await ValidateGeographyAsync(scope, dto.ProvinceId, dto.CityId);
+            if (geographyError.Forbidden)
+                return Forbid();
+            if (geographyError.Error != null)
+                return BadRequest(new { detail = geographyError.Error });
             if (await _db.OrgUnits.AnyAsync(candidate => candidate.Id != id && candidate.Title == title))
                 return Conflict(new { detail = "واحد سازمانی با این عنوان قبلا ثبت شده است" });
             if (dto.ParentOrgUnitId.HasValue)
@@ -89,6 +113,8 @@ namespace Backend.Controllers
             unit.Title = title;
             unit.Type = type;
             unit.Scope = scope;
+            unit.ProvinceId = dto.ProvinceId;
+            unit.CityId = dto.CityId;
             unit.ParentOrgUnitId = dto.ParentOrgUnitId;
             await _db.SaveChangesAsync();
 
@@ -98,7 +124,14 @@ namespace Backend.Controllers
                     .Select(candidate => candidate.Title)
                     .SingleOrDefaultAsync()
                 : null;
-            return Ok(ToOutDto(unit, parentTitle));
+            var provinceName = await _db.Provinces
+                .Where(province => province.Id == unit.ProvinceId)
+                .Select(province => province.Name)
+                .SingleAsync();
+            var cityName = unit.CityId.HasValue
+                ? await _db.Cities.Where(city => city.Id == unit.CityId).Select(city => city.Name).SingleAsync()
+                : null;
+            return Ok(ToOutDto(unit, provinceName, cityName, parentTitle));
         }
 
         [HttpGet("import/template")]
@@ -143,6 +176,19 @@ namespace Backend.Controllers
             var existingUnits = await _db.OrgUnits
                 .Select(unit => new { unit.Id, unit.Title })
                 .ToListAsync();
+            var provinces = await _db.Provinces
+                .Select(province => new { province.Id, province.Name })
+                .ToListAsync();
+            var cities = await _db.Cities
+                .Select(city => new { city.Id, city.Name, city.ProvinceId })
+                .ToListAsync();
+            var provinceIdsByName = provinces
+                .GroupBy(province => NormalizeTitle(province.Name), StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.Select(province => province.Id).ToArray(),
+                    StringComparer.Ordinal);
+            var cityIdsByProvinceAndName = cities
+                .GroupBy(city => (city.ProvinceId, Name: NormalizeTitle(city.Name)))
+                .ToDictionary(group => group.Key, group => group.Select(city => city.Id).ToArray());
             var existingByTitle = existingUnits.ToDictionary(
                 unit => NormalizeTitle(unit.Title),
                 unit => unit.Id,
@@ -178,11 +224,48 @@ namespace Backend.Controllers
                     continue;
                 }
 
+                if (string.IsNullOrWhiteSpace(row.ProvinceName) ||
+                    !provinceIdsByName.TryGetValue(NormalizeTitle(row.ProvinceName), out var provinceIds) ||
+                    provinceIds.Length != 1)
+                {
+                    errors.Add(new OrgUnitImportErrorDto(row.RowNumber, "استان معتبر نیست یا عنوان آن یکتا نیست."));
+                    continue;
+                }
+
+                var provinceId = provinceIds[0];
+                Guid? cityId = null;
+                if (scope == OrgUnitScope.Provincial && !string.IsNullOrWhiteSpace(row.CityName))
+                {
+                    errors.Add(new OrgUnitImportErrorDto(row.RowNumber, "برای دامنه استانی نباید شهر انتخاب شود."));
+                    continue;
+                }
+                if (scope == OrgUnitScope.City)
+                {
+                    if (string.IsNullOrWhiteSpace(row.CityName) ||
+                        !cityIdsByProvinceAndName.TryGetValue(
+                            (provinceId, NormalizeTitle(row.CityName)), out var resolvedCityIds) ||
+                        resolvedCityIds.Length != 1)
+                    {
+                        errors.Add(new OrgUnitImportErrorDto(row.RowNumber, "شهر معتبر در استان انتخاب‌شده یافت نشد."));
+                        continue;
+                    }
+
+                    cityId = resolvedCityIds[0];
+                }
+                if (!CanAccessProvince(provinceId) ||
+                    cityId.HasValue && !CanAccessCity(cityId.Value, provinceId))
+                {
+                    errors.Add(new OrgUnitImportErrorDto(row.RowNumber, "استان یا شهر خارج از محدوده دسترسی کاربر است."));
+                    continue;
+                }
+
                 candidates.Add(title, new ImportCandidate(
                     row.RowNumber,
                     title,
                     type,
                     scope,
+                    provinceId,
+                    cityId,
                     NormalizeTitle(row.ParentTitle)));
             }
 
@@ -223,6 +306,8 @@ namespace Backend.Controllers
                     Title = candidate.Title,
                     Type = candidate.Type,
                     Scope = candidate.Scope,
+                    ProvinceId = candidate.ProvinceId,
+                    CityId = candidate.CityId,
                     ParentOrgUnitId = candidate.ParentId ?? candidate.ParentCandidate?.Id
                 });
             }
@@ -250,6 +335,51 @@ namespace Backend.Controllers
 
             return false;
         }
+
+        private async Task<(string? Error, bool Forbidden)> ValidateGeographyAsync(
+            OrgUnitScope scope,
+            Guid provinceId,
+            Guid? cityId)
+        {
+            if (provinceId == Guid.Empty || !await _db.Provinces.AnyAsync(province => province.Id == provinceId))
+                return ("استان معتبر نیست", false);
+            if (!CanAccessProvince(provinceId))
+                return (null, true);
+
+            if (scope == OrgUnitScope.Provincial)
+                return cityId.HasValue
+                    ? ("برای دامنه استانی نباید شهر انتخاب شود", false)
+                    : (null, false);
+
+            if (!cityId.HasValue)
+                return ("برای دامنه شهرستانی انتخاب شهر الزامی است", false);
+            var city = await _db.Cities
+                .Where(candidate => candidate.Id == cityId.Value)
+                .Select(candidate => new { candidate.Id, candidate.ProvinceId })
+                .SingleOrDefaultAsync();
+            if (city == null || city.ProvinceId != provinceId)
+                return ("شهر معتبر در استان انتخاب‌شده یافت نشد", false);
+            return CanAccessCity(city.Id, city.ProvinceId)
+                ? (null, false)
+                : (null, true);
+        }
+
+        private bool CanAccessProvince(Guid provinceId) =>
+            User.ScopeLevel() switch
+            {
+                "Mastery" => true,
+                "Province" or "City" => User.ScopeProvinceId() == provinceId,
+                _ => false
+            };
+
+        private bool CanAccessCity(Guid cityId, Guid provinceId) =>
+            User.ScopeLevel() switch
+            {
+                "Mastery" => true,
+                "Province" => User.ScopeProvinceId() == provinceId,
+                "City" => User.ScopeProvinceId() == provinceId && User.ScopeCityId() == cityId,
+                _ => false
+            };
 
         private static bool ResolveParents(
             ImportCandidate candidate,
@@ -343,14 +473,21 @@ namespace Backend.Controllers
 
         private static string NormalizeTitle(string? title) => title?.Trim() ?? string.Empty;
 
-        private static OrgUnitOutDto ToOutDto(OrgUnit unit, string? parentTitle) =>
-            new(unit.Id, unit.Title, unit.Type.ToString(), unit.Scope.ToString(), unit.ParentOrgUnitId, parentTitle);
+        private static OrgUnitOutDto ToOutDto(
+            OrgUnit unit,
+            string provinceName,
+            string? cityName,
+            string? parentTitle) =>
+            new(unit.Id, unit.Title, unit.Type.ToString(), unit.Scope.ToString(),
+                unit.ProvinceId, provinceName, unit.CityId, cityName, unit.ParentOrgUnitId, parentTitle);
 
         private sealed class ImportCandidate(
             int rowNumber,
             string title,
             OrgUnitType type,
             OrgUnitScope scope,
+            Guid provinceId,
+            Guid? cityId,
             string parentTitle)
         {
             public Guid Id { get; } = Guid.NewGuid();
@@ -358,6 +495,8 @@ namespace Backend.Controllers
             public string Title { get; } = title;
             public OrgUnitType Type { get; } = type;
             public OrgUnitScope Scope { get; } = scope;
+            public Guid ProvinceId { get; } = provinceId;
+            public Guid? CityId { get; } = cityId;
             public string ParentTitle { get; } = parentTitle;
             public Guid? ParentId { get; set; }
             public ImportCandidate? ParentCandidate { get; set; }

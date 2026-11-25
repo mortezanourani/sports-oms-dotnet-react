@@ -113,8 +113,33 @@ namespace Backend.Data
                 .OnDelete(DeleteBehavior.Restrict);
 
             builder.Entity<OrgUnit>()
+                .HasOne(unit => unit.Province)
+                .WithMany()
+                .HasForeignKey(unit => unit.ProvinceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<OrgUnit>()
+                .HasOne(unit => unit.City)
+                .WithMany()
+                .HasForeignKey(unit => unit.CityId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<OrgUnit>()
                 .HasIndex(unit => unit.Title)
                 .IsUnique();
+
+            builder.Entity<OrgUnit>()
+                .Property(unit => unit.Scope)
+                .HasColumnName("scope");
+
+            builder.Entity<OrgUnit>()
+                .Property(unit => unit.CityId)
+                .HasColumnName("city_id");
+
+            builder.Entity<OrgUnit>()
+                .ToTable(table => table.HasCheckConstraint(
+                    "ck_org_units_scope_city",
+                    "(scope = 'Provincial' AND city_id IS NULL) OR (scope = 'City' AND city_id IS NOT NULL)"));
 
             builder.Entity<Federation>()
                 .HasOne(f => f.Province)

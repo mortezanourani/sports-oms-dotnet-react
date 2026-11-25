@@ -4,6 +4,8 @@ namespace Backend.DTOs
         string Title,
         string Type,
         string Scope,
+        Guid ProvinceId,
+        Guid? CityId,
         Guid? ParentOrgUnitId);
 
     public record OrgUnitOutDto(
@@ -11,6 +13,10 @@ namespace Backend.DTOs
         string Title,
         string Type,
         string Scope,
+        Guid ProvinceId,
+        string ProvinceName,
+        Guid? CityId,
+        string? CityName,
         Guid? ParentOrgUnitId,
         string? ParentOrgUnitTitle);
 

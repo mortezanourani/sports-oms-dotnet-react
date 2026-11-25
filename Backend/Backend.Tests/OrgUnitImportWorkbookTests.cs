@@ -16,7 +16,7 @@ public class OrgUnitImportWorkbookTests
             .ToArray();
 
         Assert.Equal(
-            ["عنوان واحد سازمانی", "نوع واحد سازمانی", "دامنه", "واحد سازمانی والد"],
+            ["عنوان واحد سازمانی", "نوع واحد سازمانی", "دامنه", "استان", "شهرستان", "واحد سازمانی والد"],
             headers);
     }
 
@@ -30,14 +30,19 @@ public class OrgUnitImportWorkbookTests
             worksheet.Cell(1, 1).Value = "عنوان واحد سازمانی";
             worksheet.Cell(1, 2).Value = "نوع واحد سازمانی";
             worksheet.Cell(1, 3).Value = "دامنه";
-            worksheet.Cell(1, 4).Value = "واحد سازمانی والد";
+            worksheet.Cell(1, 4).Value = "استان";
+            worksheet.Cell(1, 5).Value = "شهرستان";
+            worksheet.Cell(1, 6).Value = "واحد سازمانی والد";
             worksheet.Cell(2, 1).Value = "اداره ورزش";
             worksheet.Cell(2, 2).Value = "اداره";
             worksheet.Cell(2, 3).Value = "Provincial (استانی)";
+            worksheet.Cell(2, 4).Value = "استان نمونه";
             worksheet.Cell(3, 1).Value = "گروه ورزش";
             worksheet.Cell(3, 2).Value = "Group";
             worksheet.Cell(3, 3).Value = "City (شهرستانی)";
-            worksheet.Cell(3, 4).Value = "اداره ورزش";
+            worksheet.Cell(3, 4).Value = "استان نمونه";
+            worksheet.Cell(3, 5).Value = "شهر نمونه";
+            worksheet.Cell(3, 6).Value = "اداره ورزش";
             workbook.SaveAs(stream);
         }
 
@@ -52,11 +57,14 @@ public class OrgUnitImportWorkbookTests
                 Assert.Equal("اداره ورزش", row.Title);
                 Assert.Equal("اداره", row.Type);
                 Assert.Equal("Provincial (استانی)", row.Scope);
+                Assert.Equal("استان نمونه", row.ProvinceName);
+                Assert.Null(row.CityName);
                 Assert.Null(row.ParentTitle);
             },
             row =>
             {
                 Assert.Equal(3, row.RowNumber);
+                Assert.Equal("شهر نمونه", row.CityName);
                 Assert.Equal("اداره ورزش", row.ParentTitle);
             });
     }

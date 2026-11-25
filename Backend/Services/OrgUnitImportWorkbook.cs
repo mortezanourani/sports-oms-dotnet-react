@@ -7,6 +7,8 @@ public sealed record OrgUnitImportRow(
     string? Title,
     string? Type,
     string? Scope,
+    string? ProvinceName,
+    string? CityName,
     string? ParentTitle);
 
 public static class OrgUnitImportWorkbook
@@ -19,6 +21,8 @@ public static class OrgUnitImportWorkbook
         "عنوان واحد سازمانی",
         "نوع واحد سازمانی",
         "دامنه",
+        "استان",
+        "شهرستان",
         "واحد سازمانی والد"
     ];
 
@@ -77,7 +81,9 @@ public static class OrgUnitImportWorkbook
                 ReadCell(Headers[0]),
                 ReadCell(Headers[1]),
                 ReadCell(Headers[2]),
-                ReadCell(Headers[3])));
+                ReadCell(Headers[3]),
+                ReadCell(Headers[4]),
+                ReadCell(Headers[5])));
         }
 
         return rows;

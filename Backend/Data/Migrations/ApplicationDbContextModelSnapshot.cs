@@ -55,13 +55,13 @@ namespace Backend.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("first_name");
 
-                    b.Property<string>("IdCode")
-                        .HasColumnType("text")
-                        .HasColumnName("id_code");
-
                     b.Property<int?>("Gender")
                         .HasColumnType("integer")
                         .HasColumnName("gender");
+
+                    b.Property<string>("IdCode")
+                        .HasColumnType("text")
+                        .HasColumnName("id_code");
 
                     b.Property<string>("LastName")
                         .HasColumnType("text")
@@ -519,6 +519,10 @@ namespace Backend.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("break_out");
 
+                    b.Property<Guid>("JobPostTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_post_type_id");
+
                     b.Property<string>("ManagerType")
                         .IsRequired()
                         .HasColumnType("text")
@@ -537,10 +541,6 @@ namespace Backend.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("type_code");
-
-                    b.Property<Guid>("JobPostTypeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("job_post_type_id");
 
                     b.HasKey("Id")
                         .HasName("pk_job_posts");
@@ -741,14 +741,22 @@ namespace Backend.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("Scope")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("scope");
+                    b.Property<Guid?>("CityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("city_id");
 
                     b.Property<Guid?>("ParentOrgUnitId")
                         .HasColumnType("uuid")
                         .HasColumnName("parent_org_unit_id");
+
+                    b.Property<Guid>("ProvinceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("province_id");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("scope");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -763,14 +771,23 @@ namespace Backend.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_org_units");
 
+                    b.HasIndex("CityId")
+                        .HasDatabaseName("ix_org_units_city_id");
+
                     b.HasIndex("ParentOrgUnitId")
                         .HasDatabaseName("ix_org_units_parent_org_unit_id");
+
+                    b.HasIndex("ProvinceId")
+                        .HasDatabaseName("ix_org_units_province_id");
 
                     b.HasIndex("Title")
                         .IsUnique()
                         .HasDatabaseName("ix_org_units_title");
 
-                    b.ToTable("org_units", (string)null);
+                    b.ToTable("org_units", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_org_units_scope_city", "(scope = 'Provincial' AND city_id IS NULL) OR (scope = 'City' AND city_id IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Backend.Models.Province", b =>
@@ -1221,6 +1238,7 @@ namespace Backend.Data.Migrations
                         .HasConstraintName("fk_job_posts_org_units_org_unit_id");
 
                     b.Navigation("JobPostType");
+
                     b.Navigation("OrgUnit");
                 });
 
@@ -1283,13 +1301,30 @@ namespace Backend.Data.Migrations
 
             modelBuilder.Entity("Backend.Models.OrgUnit", b =>
                 {
+                    b.HasOne("Backend.Models.City", "City")
+                        .WithMany()
+                        .HasForeignKey("CityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_org_units_cities_city_id");
+
                     b.HasOne("Backend.Models.OrgUnit", "ParentOrgUnit")
                         .WithMany("ChildOrgUnits")
                         .HasForeignKey("ParentOrgUnitId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_org_units_org_units_parent_org_unit_id");
 
+                    b.HasOne("Backend.Models.Province", "Province")
+                        .WithMany()
+                        .HasForeignKey("ProvinceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_org_units_provinces_province_id");
+
+                    b.Navigation("City");
+
                     b.Navigation("ParentOrgUnit");
+
+                    b.Navigation("Province");
                 });
 
             modelBuilder.Entity("Backend.Models.RefreshToken", b =>

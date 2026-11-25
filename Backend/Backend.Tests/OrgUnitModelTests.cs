@@ -18,7 +18,16 @@ public class OrgUnitModelTests
         using var context = new ApplicationDbContext(options);
 
         var entity = context.Model.FindEntityType(typeof(OrgUnit))!;
-        var parentRelationship = Assert.Single(entity.GetForeignKeys());
+        var foreignKeys = entity.GetForeignKeys().ToArray();
+        var parentRelationship = Assert.Single(
+            foreignKeys,
+            relationship => relationship.Properties.Single().Name == nameof(OrgUnit.ParentOrgUnitId));
+        var provinceRelationship = Assert.Single(
+            foreignKeys,
+            relationship => relationship.Properties.Single().Name == nameof(OrgUnit.ProvinceId));
+        var cityRelationship = Assert.Single(
+            foreignKeys,
+            relationship => relationship.Properties.Single().Name == nameof(OrgUnit.CityId));
         var titleIndex = Assert.Single(
             entity.GetIndexes(),
             index => index.Properties.Single().Name == nameof(OrgUnit.Title));
@@ -27,6 +36,10 @@ public class OrgUnitModelTests
         Assert.True(titleIndex.IsUnique);
         Assert.False(parentRelationship.IsRequired);
         Assert.Equal(DeleteBehavior.Restrict, parentRelationship.DeleteBehavior);
+        Assert.True(provinceRelationship.IsRequired);
+        Assert.Equal(DeleteBehavior.Restrict, provinceRelationship.DeleteBehavior);
+        Assert.False(cityRelationship.IsRequired);
+        Assert.Equal(DeleteBehavior.Restrict, cityRelationship.DeleteBehavior);
     }
 
     [Fact]
