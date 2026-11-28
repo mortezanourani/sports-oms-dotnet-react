@@ -1,25 +1,20 @@
 import { useEffect, useState } from 'react';
 import {
-  Alert, Button, Form, Input, Modal, Select, Space, Table, Tag, Typography, message,
+  Alert, Button, Form, List, Modal, Select, Space, Table, Tag, Typography, Upload, message,
 } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { DownloadOutlined, UploadOutlined } from '@ant-design/icons';
 import SolarDatePicker from '../../../components/SolarDatePicker';
-import { useProvinces, useCities } from '../../../hooks/useLocations';
 import { useUsers } from '../../../hooks/useUsers';
 import {
-  useAssignJobPost, useCreateJobPost, useEndJobPostAssignment, useJobPostAssignments,
-  useJobPosts, useUpdateJobPost,
+  useAssignJobPost, useEndJobPostAssignment, useImportJobPostAssignments,
+  useJobPostAssignmentPosts, useJobPostAssignments,
 } from '../../../hooks/useJobPosts';
-import { useAuth } from '../../../hooks/useAuth';
+import {
+  downloadJobPostAssignmentsImportTemplate,
+} from '../../../api/jobPosts';
 import { formatSolarDate } from '../../../utils/dates';
 
-const { Title } = Typography;
-
-const placementLabels = {
-  Province: 'استانی',
-  City: 'شهری',
-  Both: 'استانی و شهری',
-};
+const { Title, Text } = Typography;
 
 function toDateOnly(value) {
   if (!value) return null;
@@ -31,107 +26,67 @@ function toDateOnly(value) {
   ].join('-');
 }
 
-export default function JobPostsPanel({ variant = 'both' }) {
-  const auth = useAuth();
-  const [postForm] = Form.useForm();
+export default function JobPostsPanel() {
   const [assignmentForm] = Form.useForm();
   const [endForm] = Form.useForm();
-  const assignmentPostId = Form.useWatch('jobPostId', assignmentForm);
-  const provinceIdForForm = Form.useWatch('provinceId', assignmentForm);
-  const [postModalOpen, setPostModalOpen] = useState(false);
-  const [editingPost, setEditingPost] = useState(null);
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [endingAssignment, setEndingAssignment] = useState(null);
-  const [searchInput, setSearchInput] = useState('');
   const [userSearch, setUserSearch] = useState('');
-  const [selectedPostId, setSelectedPostId] = useState();
-  const [selectedProvinceId, setSelectedProvinceId] = useState(auth.scopeProvinceId || undefined);
-  const [selectedCityId, setSelectedCityId] = useState(auth.scopeCityId || undefined);
+  const [userSearchInput, setUserSearchInput] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState();
+  const [selectedJobPostId, setSelectedJobPostId] = useState();
+  const [fileList, setFileList] = useState([]);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [importResult, setImportResult] = useState(null);
 
-  const { data: posts = [], isLoading: postsLoading, error: postsError } = useJobPosts();
-  const { data: provinces = [] } = useProvinces();
-  const { data: cities = [] } = useCities(provinceIdForForm);
-  const { data: filterCities = [] } = useCities(selectedProvinceId);
-  const { data: usersData } = useUsers({
+  const { data: posts = [], isLoading: postsLoading, error: postsError } = useJobPostAssignmentPosts();
+  const { data: usersData, isLoading: usersLoading } = useUsers({
     page: 1,
     pageSize: 100,
     search: userSearch,
   });
-  const assignmentFilters = {
-    ...(selectedPostId ? { jobPostId: selectedPostId } : {}),
-    ...(selectedProvinceId ? { provinceId: selectedProvinceId } : {}),
-    ...(selectedCityId ? { cityId: selectedCityId } : {}),
-  };
   const {
     data: assignments = [],
     isLoading: assignmentsLoading,
     error: assignmentsError,
-  } = useJobPostAssignments(assignmentFilters);
+  } = useJobPostAssignments({
+    ...(selectedUserId ? { userId: selectedUserId } : {}),
+    ...(selectedJobPostId ? { jobPostId: selectedJobPostId } : {}),
+  });
 
-  const createPostMutation = useCreateJobPost();
-  const updatePostMutation = useUpdateJobPost();
   const assignMutation = useAssignJobPost();
   const endMutation = useEndJobPostAssignment();
+  const importMutation = useImportJobPostAssignments();
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setUserSearch(searchInput.trim()), 300);
+    const timer = window.setTimeout(() => setUserSearch(userSearchInput.trim()), 300);
     return () => window.clearTimeout(timer);
-  }, [searchInput]);
+  }, [userSearchInput]);
 
-  const showPostModal = (post = null) => {
-    setEditingPost(post);
-    postForm.resetFields();
-    postForm.setFieldsValue(post
-      ? {
-          name: post.name,
-          placementScope: post.placementScope,
-          isActive: post.isActive,
-        }
-      : { placementScope: 'Both', isActive: true });
-    setPostModalOpen(true);
-  };
-
-  const savePost = async (values) => {
-    const payload = { ...values, name: values.name.trim() };
-    try {
-      if (editingPost) {
-        await updatePostMutation.mutateAsync({ id: editingPost.id, payload });
-        message.success('پست شغلی ویرایش شد');
-      } else {
-        await createPostMutation.mutateAsync(payload);
-        message.success('پست شغلی ایجاد شد');
-      }
-      setPostModalOpen(false);
-      postForm.resetFields();
-    } catch (error) {
-      message.error(error.response?.data?.detail || 'ذخیره پست شغلی با خطا مواجه شد');
-    }
-  };
+  const userOptions = (usersData?.items || []).map((user) => ({
+    value: user.id,
+    label: `${user.firstName} ${user.lastName} (${user.username})`.trim(),
+  }));
+  const postOptions = posts.map((post) => ({
+    value: post.id,
+    label: `${post.title} - ${post.jobPostUniqueId}`,
+  }));
 
   const openAssignmentModal = () => {
     assignmentForm.resetFields();
-    assignmentForm.setFieldsValue({
-      ...(auth.scopeLevel !== 'Mastery' && { provinceId: auth.scopeProvinceId }),
-      ...(auth.scopeLevel === 'City' && { cityId: auth.scopeCityId }),
-      startedOn: null,
-    });
-    setSearchInput('');
+    setUserSearchInput('');
     setUserSearch('');
     setAssignmentModalOpen(true);
   };
 
   const assignUser = async (values) => {
     try {
-      const selectedPost = posts.find((post) => post.id === values.jobPostId);
-      const cityId = selectedPost?.placementScope === 'Province'
-        ? null
-        : values.cityId || null;
       await assignMutation.mutateAsync({
-        jobPostId: values.jobPostId,
         userId: values.userId,
-        provinceId: values.provinceId,
-        cityId,
-        startedOn: toDateOnly(values.startedOn),
+        jobPostId: values.jobPostId,
+        startDate: toDateOnly(values.startDate),
+        endDate: toDateOnly(values.endDate),
       });
       message.success('تخصیص پست با موفقیت ثبت شد');
       setAssignmentModalOpen(false);
@@ -145,7 +100,7 @@ export default function JobPostsPanel({ variant = 'both' }) {
     try {
       await endMutation.mutateAsync({
         id: endingAssignment.id,
-        endedOn: toDateOnly(values.endedOn),
+        endDate: toDateOnly(values.endDate),
       });
       message.success('تخصیص پایان یافت');
       setEndingAssignment(null);
@@ -155,43 +110,53 @@ export default function JobPostsPanel({ variant = 'both' }) {
     }
   };
 
-  const postColumns = [
-    { title: 'عنوان پست', dataIndex: 'name' },
-    {
-      title: 'دامنه جغرافیایی',
-      dataIndex: 'placementScope',
-      render: (scope) => placementLabels[scope] || scope,
-    },
-    {
-      title: 'وضعیت',
-      dataIndex: 'isActive',
-      render: (active) => <Tag color={active ? 'green' : 'default'}>{active ? 'فعال' : 'غیرفعال'}</Tag>,
-    },
-    {
-      title: 'عملیات',
-      render: (_, post) => <Button onClick={() => showPostModal(post)}>ویرایش</Button>,
-    },
-  ];
+  const downloadTemplate = async () => {
+    try {
+      const blob = await downloadJobPostAssignmentsImportTemplate();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'job-post-assignments-import-template.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      message.error(error.response?.data?.detail || 'دانلود فایل قالب با خطا مواجه شد');
+    }
+  };
 
-  const assignmentColumns = [
-    { title: 'پست شغلی', dataIndex: 'jobPostName' },
+  const importAssignments = async () => {
+    if (!selectedFile) return;
+    try {
+      const result = await importMutation.mutateAsync(selectedFile);
+      setImportModalOpen(false);
+      setFileList([]);
+      setSelectedFile(null);
+      setImportResult(result);
+    } catch (error) {
+      message.error(error.response?.data?.detail || 'وارد کردن تخصیص‌ها با خطا مواجه شد');
+    }
+  };
+
+  const columns = [
     {
       title: 'کاربر',
-      render: (_, item) => `${item.userFirstName} ${item.userLastName} (${item.username})`,
+      render: (_, item) => `${item.userFirstName} ${item.userLastName} (${item.username})`.trim(),
     },
     {
-      title: 'محدوده',
-      render: (_, item) => item.cityName ? `${item.cityName} - ${item.provinceName}` : item.provinceName,
+      title: 'پست شغلی',
+      render: (_, item) => `${item.jobPostTitle} - ${item.jobPostUniqueId}`,
     },
-    { title: 'از تاریخ', dataIndex: 'startedOn', render: formatSolarDate },
+    { title: 'از تاریخ', dataIndex: 'startDate', render: formatSolarDate },
     {
       title: 'تا تاریخ',
-      dataIndex: 'endedOn',
+      dataIndex: 'endDate',
       render: (date) => date ? formatSolarDate(date) : <Tag color="green">در حال حاضر</Tag>,
     },
     {
       title: 'عملیات',
-      render: (_, item) => !item.endedOn && (
+      render: (_, item) => !item.endDate && (
         <Button
           danger
           onClick={() => {
@@ -205,125 +170,66 @@ export default function JobPostsPanel({ variant = 'both' }) {
     },
   ];
 
-  const provinceOptions = provinces.map((province) => ({
-    value: province.id,
-    label: province.name,
-  }));
-  const cityOptions = cities.map((city) => ({ value: city.id, label: city.name }));
-  const userOptions = (usersData?.items || []).map((user) => ({
-    value: user.id,
-    label: `${user.firstName} ${user.lastName} (${user.username})`,
-  }));
-  const assignablePosts = posts.filter((post) => {
-    if (!post.isActive) return false;
-    if (auth.scopeLevel === 'City') return post.placementScope !== 'Province';
-    return true;
-  });
-  const selectedAssignmentPost = assignablePosts.find((post) => post.id === assignmentPostId);
-  const cityAssignmentRequired = selectedAssignmentPost?.placementScope === 'City' ||
-    auth.scopeLevel === 'City';
-  const cityAssignmentAllowed = selectedAssignmentPost?.placementScope !== 'Province';
-
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {postsError && <Alert type="error" message="دریافت پست‌های شغلی با خطا مواجه شد" />}
-      {variant !== 'assignments' && <section>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <Title level={5} style={{ margin: 0 }}>تعریف پست‌های شغلی</Title>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => showPostModal()}>
-            افزودن پست
-          </Button>
-        </div>
-        <Table
-          rowKey="id"
-          columns={postColumns}
-          dataSource={posts}
-          loading={postsLoading}
-          pagination={{ pageSize: 10 }}
-          locale={{ emptyText: 'پستی ثبت نشده است' }}
-        />
-      </section>}
-
-      {variant !== 'definitions' && <section>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+      {(postsError || assignmentsError) && (
+        <Alert type="error" message="دریافت پست‌ها یا سوابق تخصیص با خطا مواجه شد" />
+      )}
+      <section>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          marginBottom: 12,
+          flexWrap: 'wrap',
+        }}
+        >
           <Title level={5} style={{ margin: 0 }}>سوابق تخصیص پست</Title>
-          <Button type="primary" onClick={openAssignmentModal} disabled={!assignablePosts.length}>
-            تخصیص پست به کاربر
-          </Button>
+          <Space wrap>
+            <Button icon={<UploadOutlined />} onClick={() => setImportModalOpen(true)}>
+              وارد کردن از Excel
+            </Button>
+            <Button type="primary" onClick={openAssignmentModal}>
+              تخصیص پست به کاربر
+            </Button>
+          </Space>
         </div>
         <Space wrap style={{ marginBottom: 12 }}>
           <Select
             allowClear
-            placeholder="همه پست‌ها"
-            style={{ width: 220 }}
-            value={selectedPostId}
-            onChange={setSelectedPostId}
-            options={posts.map((post) => ({ value: post.id, label: post.name }))}
+            showSearch
+            filterOption={false}
+            onSearch={setUserSearchInput}
+            placeholder="همه کاربران"
+            style={{ width: 280 }}
+            loading={usersLoading}
+            value={selectedUserId}
+            onChange={setSelectedUserId}
+            options={userOptions}
           />
-          {auth.scopeLevel === 'Mastery' && (
-            <Select
-              allowClear
-              placeholder="همه استان‌ها"
-              style={{ width: 220 }}
-              value={selectedProvinceId}
-              onChange={(value) => {
-                setSelectedProvinceId(value);
-                setSelectedCityId(undefined);
-              }}
-              options={provinceOptions}
-            />
-          )}
-          {auth.scopeLevel !== 'City' && (
-            <Select
-              allowClear
-              placeholder="همه شهرها"
-              style={{ width: 220 }}
-              disabled={!selectedProvinceId}
-              value={selectedCityId}
-              onChange={setSelectedCityId}
-              options={filterCities.map((city) => ({ value: city.id, label: city.name }))}
-            />
-          )}
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="همه پست‌ها"
+            style={{ width: 280 }}
+            loading={postsLoading}
+            value={selectedJobPostId}
+            onChange={setSelectedJobPostId}
+            options={postOptions}
+          />
         </Space>
-        {assignmentsError && <Alert type="error" message="دریافت سوابق تخصیص با خطا مواجه شد" />}
         <Table
           rowKey="id"
-          columns={assignmentColumns}
+          columns={columns}
           dataSource={assignments}
           loading={assignmentsLoading}
           pagination={{ pageSize: 10 }}
           locale={{ emptyText: 'سابقه تخصیصی ثبت نشده است' }}
+          scroll={{ x: true }}
         />
-      </section>}
-
-      <Modal
-        title={editingPost ? 'ویرایش پست شغلی' : 'افزودن پست شغلی'}
-        open={postModalOpen}
-        onCancel={() => setPostModalOpen(false)}
-        onOk={() => postForm.submit()}
-        confirmLoading={createPostMutation.isPending || updatePostMutation.isPending}
-        okText="ذخیره"
-        cancelText="انصراف"
-        destroyOnClose
-      >
-        <Form form={postForm} layout="vertical" onFinish={savePost}>
-          <Form.Item name="name" label="عنوان پست" rules={[{ required: true, whitespace: true, max: 160 }]}>
-            <Input maxLength={160} />
-          </Form.Item>
-          <Form.Item name="placementScope" label="دامنه جغرافیایی" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { value: 'Province', label: 'استانی' },
-                { value: 'City', label: 'شهری' },
-                { value: 'Both', label: 'استانی و شهری' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item name="isActive" label="وضعیت" rules={[{ required: true }]}>
-            <Select options={[{ value: true, label: 'فعال' }, { value: false, label: 'غیرفعال' }]} />
-          </Form.Item>
-        </Form>
-      </Modal>
+      </section>
 
       <Modal
         title="تخصیص پست شغلی"
@@ -336,72 +242,42 @@ export default function JobPostsPanel({ variant = 'both' }) {
         destroyOnClose
       >
         <Form form={assignmentForm} layout="vertical" onFinish={assignUser}>
-          <Form.Item name="jobPostId" label="پست شغلی" rules={[{ required: true }]}>
-            <Select
-              options={assignablePosts.map((post) => ({
-                value: post.id,
-                label: `${post.name} - ${placementLabels[post.placementScope]}`,
-              }))}
-              onChange={(id) => {
-                if (posts.find((post) => post.id === id)?.placementScope === 'Province') {
-                  assignmentForm.setFieldValue('cityId', undefined);
-                }
-              }}
-            />
-          </Form.Item>
-          <Form.Item name="userId" label="کاربر" rules={[{ required: true }]}>
+          <Form.Item name="userId" label="کاربر" rules={[{ required: true, message: 'کاربر را انتخاب کنید' }]}>
             <Select
               showSearch
               filterOption={false}
-              onSearch={setSearchInput}
+              onSearch={setUserSearchInput}
               options={userOptions}
               placeholder="جستجوی نام یا نام کاربری"
               notFoundContent="کاربری یافت نشد"
             />
           </Form.Item>
-          {auth.scopeLevel === 'Mastery' ? (
-            <Form.Item name="provinceId" label="استان" rules={[{ required: true }]}>
-              <Select
-                options={provinceOptions}
-                onChange={() => assignmentForm.setFieldValue('cityId', undefined)}
-              />
-            </Form.Item>
-          ) : (
-            <Form.Item name="provinceId" hidden rules={[{ required: true }]}>
-              <Input />
-            </Form.Item>
-          )}
-          {!cityAssignmentAllowed ? (
-            <Form.Item name="cityId" hidden>
-              <Input />
-            </Form.Item>
-          ) : (
-            <Form.Item
-              name="cityId"
-              label={cityAssignmentRequired ? 'شهرستان' : 'شهرستان (اختیاری)'}
-              rules={cityAssignmentRequired ? [{ required: true, message: 'انتخاب شهرستان الزامی است' }] : []}
-            >
-              <Select
-                allowClear={!cityAssignmentRequired}
-                disabled={!provinceIdForForm}
-                options={cityOptions}
-                onChange={(value) => {
-                  if (value) {
-                    const city = cities.find((item) => item.id === value);
-                    if (city) assignmentForm.setFieldValue('provinceId', city.provinceId);
-                  }
-                }}
-              />
-            </Form.Item>
-          )}
-          <Form.Item name="startedOn" label="تاریخ شروع" rules={[{ required: true, message: 'تاریخ شروع الزامی است' }]}>
+          <Form.Item
+            name="jobPostId"
+            label="پست شغلی"
+            rules={[{ required: true, message: 'پست شغلی را انتخاب کنید' }]}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              options={postOptions}
+              loading={postsLoading}
+            />
+          </Form.Item>
+          <Form.Item name="startDate" label="تاریخ شروع (اختیاری)">
             <SolarDatePicker placeholder="انتخاب تاریخ شروع" />
           </Form.Item>
+          <Form.Item name="endDate" label="تاریخ پایان (اختیاری)">
+            <SolarDatePicker placeholder="انتخاب تاریخ پایان" />
+          </Form.Item>
+          <Text type="secondary">
+            تاریخ پایان شامل همان روز است. خالی بودن تاریخ شروع یعنی نامشخص و خالی بودن تاریخ پایان یعنی تخصیص جاری.
+          </Text>
         </Form>
       </Modal>
 
       <Modal
-        title={`پایان تخصیص ${endingAssignment?.jobPostName || ''}`}
+        title={`پایان تخصیص ${endingAssignment?.jobPostTitle || ''}`}
         open={Boolean(endingAssignment)}
         onCancel={() => setEndingAssignment(null)}
         onOk={() => endForm.submit()}
@@ -411,10 +287,86 @@ export default function JobPostsPanel({ variant = 'both' }) {
         destroyOnClose
       >
         <Form form={endForm} layout="vertical" onFinish={endAssignment}>
-          <Form.Item name="endedOn" label="تاریخ پایان" rules={[{ required: true, message: 'تاریخ پایان الزامی است' }]}>
+          <Form.Item
+            name="endDate"
+            label="تاریخ پایان"
+            rules={[{ required: true, message: 'تاریخ پایان الزامی است' }]}
+          >
             <SolarDatePicker placeholder="انتخاب تاریخ پایان" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="وارد کردن تخصیص پست‌ها"
+        open={importModalOpen}
+        onCancel={() => {
+          if (importMutation.isPending) return;
+          setImportModalOpen(false);
+          setFileList([]);
+          setSelectedFile(null);
+        }}
+        onOk={importAssignments}
+        okText="بارگذاری"
+        cancelText="انصراف"
+        okButtonProps={{ disabled: !selectedFile }}
+        confirmLoading={importMutation.isPending}
+        closable={!importMutation.isPending}
+        maskClosable={!importMutation.isPending}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <Text>
+            تاریخ‌های خالی به معنی تاریخ شروع نامشخص و تخصیص جاری است. برای تخصیص جاری تکراری یا بازه هم‌پوشان، ردیف رد می‌شود.
+          </Text>
+          <Button icon={<DownloadOutlined />} onClick={downloadTemplate}>
+            دانلود فایل قالب
+          </Button>
+          <Upload
+            accept=".xlsx"
+            fileList={fileList}
+            maxCount={1}
+            disabled={importMutation.isPending}
+            beforeUpload={() => false}
+            onChange={({ fileList: nextFileList }) => {
+              const next = nextFileList.slice(-1);
+              setFileList(next);
+              setSelectedFile(next[0]?.originFileObj || null);
+            }}
+            onRemove={() => {
+              setSelectedFile(null);
+              setFileList([]);
+            }}
+          >
+            <Button icon={<UploadOutlined />} disabled={importMutation.isPending}>
+              انتخاب فایل Excel
+            </Button>
+          </Upload>
+        </Space>
+      </Modal>
+
+      <Modal
+        title="نتیجه وارد کردن تخصیص‌ها"
+        open={Boolean(importResult)}
+        onCancel={() => setImportResult(null)}
+        footer={null}
+      >
+        {importResult && (
+          <>
+            <p>ایجادشده: {importResult.created}</p>
+            <p>ناموفق: {importResult.failed}</p>
+            {importResult.errors.length > 0 && (
+              <List
+                size="small"
+                bordered
+                dataSource={importResult.errors}
+                renderItem={(error) => (
+                  <List.Item>ردیف {error.rowNumber}: {error.reason}</List.Item>
+                )}
+                style={{ maxHeight: 280, overflowY: 'auto' }}
+              />
+            )}
+          </>
+        )}
       </Modal>
     </Space>
   );

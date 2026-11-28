@@ -44,5 +44,7 @@ namespace Backend.Models
         public string? FatherName { get; set; }
 
         public Gender? Gender { get; set; }
+
+        public string? IdCode { get; set; }
     }
 }

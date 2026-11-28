@@ -59,6 +59,10 @@ namespace Backend.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("gender");
 
+                    b.Property<string>("IdCode")
+                        .HasColumnType("text")
+                        .HasColumnName("id_code");
+
                     b.Property<string>("LastName")
                         .HasColumnType("text")
                         .HasColumnName("last_name");
@@ -511,26 +515,62 @@ namespace Backend.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<bool>("IsActive")
+                    b.Property<bool?>("BreakOut")
                         .HasColumnType("boolean")
-                        .HasColumnName("is_active");
+                        .HasColumnName("break_out");
 
-                    b.Property<string>("Name")
+                    b.Property<string>("JobPostCode")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasColumnName("name");
+                        .HasColumnName("job_post_code");
 
-                    b.Property<string>("PlacementScope")
+                    b.Property<Guid>("JobPostTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_post_type_id");
+
+                    b.Property<string>("JobPostUniqueId")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasColumnName("placement_scope");
+                        .HasColumnName("job_post_unique_id");
+
+                    b.Property<string>("ManagerType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("manager_type");
+
+                    b.Property<Guid>("OrgUnitId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("org_unit_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.Property<string>("TypeCode")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("type_code");
 
                     b.HasKey("Id")
                         .HasName("pk_job_posts");
 
-                    b.HasIndex("Name")
+                    b.HasIndex("JobPostCode")
                         .IsUnique()
-                        .HasDatabaseName("ix_job_posts_name");
+                        .HasDatabaseName("ix_job_posts_job_post_code");
+
+                    b.HasIndex("JobPostTypeId")
+                        .HasDatabaseName("ix_job_posts_job_post_type_id");
+
+                    b.HasIndex("JobPostUniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_job_posts_job_post_unique_id");
+
+                    b.HasIndex("OrgUnitId")
+                        .HasDatabaseName("ix_job_posts_org_unit_id");
+
+                    b.HasIndex("Title")
+                        .HasDatabaseName("ix_job_posts_title");
 
                     b.ToTable("job_posts", (string)null);
                 });
@@ -542,34 +582,25 @@ namespace Backend.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid?>("ChangedByUserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("changed_by_user_id");
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
 
-                    b.Property<Guid?>("CityId")
+                    b.Property<Guid?>("CreatedByUserId")
                         .HasColumnType("uuid")
-                        .HasColumnName("city_id");
+                        .HasColumnName("created_by_user_id");
 
-                    b.Property<DateOnly?>("EndedOn")
+                    b.Property<DateOnly?>("EndDate")
                         .HasColumnType("date")
-                        .HasColumnName("ended_on");
+                        .HasColumnName("end_date");
 
                     b.Property<Guid>("JobPostId")
                         .HasColumnType("uuid")
                         .HasColumnName("job_post_id");
 
-                    b.Property<string>("JobPostName")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("job_post_name");
-
-                    b.Property<Guid>("ProvinceId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("province_id");
-
-                    b.Property<DateOnly>("StartedOn")
+                    b.Property<DateOnly?>("StartDate")
                         .HasColumnType("date")
-                        .HasColumnName("started_on");
+                        .HasColumnName("start_date");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
@@ -578,24 +609,35 @@ namespace Backend.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_job_post_assignments");
 
-                    b.HasIndex("CityId")
-                        .HasDatabaseName("ix_job_post_assignments_city_id");
+                    b.HasIndex("JobPostId", "StartDate", "EndDate")
+                        .HasDatabaseName("ix_job_post_assignments_job_post_id_start_date_end_date");
 
-                    b.HasIndex("JobPostId")
-                        .HasDatabaseName("ix_job_post_assignments_job_post_id");
-
-                    b.HasIndex("ProvinceId")
-                        .HasDatabaseName("ix_job_post_assignments_province_id");
-
-                    b.HasIndex("UserId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_job_post_assignments_user_id")
-                        .HasFilter("\"ended_on\" IS NULL");
-
-                    b.HasIndex("UserId", "StartedOn")
-                        .HasDatabaseName("ix_job_post_assignments_user_id_started_on");
+                    b.HasIndex("UserId", "StartDate", "EndDate")
+                        .HasDatabaseName("ix_job_post_assignments_user_id_start_date_end_date");
 
                     b.ToTable("job_post_assignments", (string)null);
+                });
+
+            modelBuilder.Entity("Backend.Models.JobPostType", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id")
+                        .HasName("pk_job_post_types");
+
+                    b.HasIndex("Title")
+                        .IsUnique()
+                        .HasDatabaseName("ix_job_post_types_title");
+
+                    b.ToTable("job_post_types", (string)null);
                 });
 
             modelBuilder.Entity("Backend.Models.Medal", b =>
@@ -750,6 +792,62 @@ namespace Backend.Data.Migrations
                         .HasDatabaseName("ix_message_recipients_message_id_recipient_id");
 
                     b.ToTable("message_recipients", (string)null);
+                });
+
+            modelBuilder.Entity("Backend.Models.OrgUnit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("city_id");
+
+                    b.Property<Guid?>("ParentOrgUnitId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_org_unit_id");
+
+                    b.Property<Guid>("ProvinceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("province_id");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("scope");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_org_units");
+
+                    b.HasIndex("CityId")
+                        .HasDatabaseName("ix_org_units_city_id");
+
+                    b.HasIndex("ParentOrgUnitId")
+                        .HasDatabaseName("ix_org_units_parent_org_unit_id");
+
+                    b.HasIndex("ProvinceId")
+                        .HasDatabaseName("ix_org_units_province_id");
+
+                    b.HasIndex("Title")
+                        .IsUnique()
+                        .HasDatabaseName("ix_org_units_title");
+
+                    b.ToTable("org_units", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_org_units_scope_city", "(scope = 'Provincial' AND city_id IS NULL) OR (scope = 'City' AND city_id IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Backend.Models.Province", b =>
@@ -1183,14 +1281,29 @@ namespace Backend.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Backend.Models.JobPost", b =>
+                {
+                    b.HasOne("Backend.Models.JobPostType", "JobPostType")
+                        .WithMany()
+                        .HasForeignKey("JobPostTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_job_posts_job_post_types_job_post_type_id");
+
+                    b.HasOne("Backend.Models.OrgUnit", "OrgUnit")
+                        .WithMany()
+                        .HasForeignKey("OrgUnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_job_posts_org_units_org_unit_id");
+
+                    b.Navigation("JobPostType");
+
+                    b.Navigation("OrgUnit");
+                });
+
             modelBuilder.Entity("Backend.Models.JobPostAssignment", b =>
                 {
-                    b.HasOne("Backend.Models.City", "City")
-                        .WithMany()
-                        .HasForeignKey("CityId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_job_post_assignments_cities_city_id");
-
                     b.HasOne("Backend.Models.JobPost", "JobPost")
                         .WithMany()
                         .HasForeignKey("JobPostId")
@@ -1198,25 +1311,14 @@ namespace Backend.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_job_post_assignments_job_posts_job_post_id");
 
-                    b.HasOne("Backend.Models.Province", "Province")
-                        .WithMany()
-                        .HasForeignKey("ProvinceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_job_post_assignments_provinces_province_id");
-
                     b.HasOne("Backend.Models.ApplicationUser", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_job_post_assignments_users_user_id");
 
-                    b.Navigation("City");
-
                     b.Navigation("JobPost");
-
-                    b.Navigation("Province");
 
                     b.Navigation("User");
                 });
@@ -1276,6 +1378,34 @@ namespace Backend.Data.Migrations
                     b.Navigation("Message");
 
                     b.Navigation("Recipient");
+                });
+
+            modelBuilder.Entity("Backend.Models.OrgUnit", b =>
+                {
+                    b.HasOne("Backend.Models.City", "City")
+                        .WithMany()
+                        .HasForeignKey("CityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_org_units_cities_city_id");
+
+                    b.HasOne("Backend.Models.OrgUnit", "ParentOrgUnit")
+                        .WithMany("ChildOrgUnits")
+                        .HasForeignKey("ParentOrgUnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_org_units_org_units_parent_org_unit_id");
+
+                    b.HasOne("Backend.Models.Province", "Province")
+                        .WithMany()
+                        .HasForeignKey("ProvinceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_org_units_provinces_province_id");
+
+                    b.Navigation("City");
+
+                    b.Navigation("ParentOrgUnit");
+
+                    b.Navigation("Province");
                 });
 
             modelBuilder.Entity("Backend.Models.RefreshToken", b =>
@@ -1401,6 +1531,11 @@ namespace Backend.Data.Migrations
                     b.Navigation("Attachments");
 
                     b.Navigation("Recipients");
+                });
+
+            modelBuilder.Entity("Backend.Models.OrgUnit", b =>
+                {
+                    b.Navigation("ChildOrgUnits");
                 });
 
             modelBuilder.Entity("Backend.Models.Province", b =>

@@ -1,0 +1,102 @@
+using ClosedXML.Excel;
+
+namespace Backend.Services;
+
+public sealed record JobPostImportRow(
+    int RowNumber,
+    string? JobPostTypeTitle,
+    string? OrgUnitTitle,
+    string? TypeCode,
+    string? JobPostCode,
+    string? JobPostUniqueId,
+    string? Title,
+    string? ManagerType,
+    string? BreakOut);
+
+public static class JobPostImportWorkbook
+{
+    public const string ContentType =
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    private static readonly string[] Headers =
+    [
+        "نوع پست",
+        "واحد سازمانی",
+        "کد نوع پست",
+        "شماره پست",
+        "شناسه یکتا پست",
+        "عنوان پست",
+        "نوع مدیر حرفه‌ای",
+        "شکسته‌شده"
+    ];
+
+    public static byte[] CreateTemplate()
+    {
+        using var workbook = new XLWorkbook();
+        var worksheet = workbook.Worksheets.Add("پست‌های سازمانی");
+        for (var column = 0; column < Headers.Length; column++)
+            worksheet.Cell(1, column + 1).Value = Headers[column];
+
+        worksheet.Row(1).Style.Font.Bold = true;
+        worksheet.SheetView.FreezeRows(1);
+        worksheet.Columns(1, Headers.Length).AdjustToContents();
+        var breakOutValidation = worksheet.Range(2, 8, 1000, 8).CreateDataValidation();
+        breakOutValidation.List("\"بله,خیر,نامشخص\"");
+        breakOutValidation.ErrorTitle = "مقدار نامعتبر";
+        breakOutValidation.ErrorMessage = "یکی از گزینه‌های بله، خیر یا نامشخص را انتخاب کنید.";
+        breakOutValidation.ShowErrorMessage = true;
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
+    public static IReadOnlyList<JobPostImportRow> Read(Stream stream)
+    {
+        using var workbook = new XLWorkbook(stream);
+        var worksheet = workbook.Worksheets.FirstOrDefault()
+            ?? throw new InvalidDataException("فایل اکسل هیچ کاربرگی ندارد.");
+        var columns = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        foreach (var cell in worksheet.Row(1).CellsUsed())
+        {
+            var header = cell.GetString().Trim();
+            if (!Headers.Contains(header, StringComparer.Ordinal))
+                continue;
+            if (!columns.TryAdd(header, cell.Address.ColumnNumber))
+                throw new InvalidDataException($"ستون «{header}» بیش از یک بار تکرار شده است.");
+        }
+
+        var missingHeaders = Headers.Where(header => !columns.ContainsKey(header)).ToArray();
+        if (missingHeaders.Length > 0)
+            throw new InvalidDataException($"ستون‌های الزامی در فایل وجود ندارند: {string.Join("، ", missingHeaders)}.");
+
+        var lastRow = worksheet.LastRowUsed()?.RowNumber() ?? 1;
+        var rows = new List<JobPostImportRow>();
+        for (var rowNumber = 2; rowNumber <= lastRow; rowNumber++)
+        {
+            var row = worksheet.Row(rowNumber);
+            if (row.IsEmpty())
+                continue;
+
+            string? ReadCell(string header)
+            {
+                var value = row.Cell(columns[header]).GetString().Trim();
+                return string.IsNullOrEmpty(value) ? null : value;
+            }
+
+            rows.Add(new JobPostImportRow(
+                rowNumber,
+                ReadCell(Headers[0]),
+                ReadCell(Headers[1]),
+                ReadCell(Headers[2]),
+                ReadCell(Headers[3]),
+                ReadCell(Headers[4]),
+                ReadCell(Headers[5]),
+                ReadCell(Headers[6]),
+                ReadCell(Headers[7])));
+        }
+
+        return rows;
+    }
+}

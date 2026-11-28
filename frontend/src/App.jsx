@@ -15,6 +15,8 @@ import UsersList from './pages/dashboard/Users/UsersList';
 import MessagesPage from './pages/dashboard/Messages/MessagesPage';
 import ProfilePage from './pages/dashboard/Profile/ProfilePage';
 import JobPostsPage from './pages/dashboard/Admin/JobPostsPage';
+import JobPostTypesPage from './pages/dashboard/Admin/JobPostTypesPage';
+import OrgUnitsPage from './pages/dashboard/Admin/OrgUnitsPage';
 
 export default function App() {
   return (
@@ -44,6 +46,8 @@ export default function App() {
               <Route path="/dashboard/locations" element={<LocationsPage />} />
               <Route element={<ProtectedRoute allowedRoles={['Admin']} />}>
                 <Route path="/dashboard/job-posts" element={<JobPostsPage />} />
+                <Route path="/dashboard/job-post-types" element={<JobPostTypesPage />} />
+                <Route path="/dashboard/org-units" element={<OrgUnitsPage />} />
               </Route>
               <Route path="/dashboard/messages" element={<MessagesPage />} />
               <Route path="/dashboard/profile" element={<ProfilePage />} />
