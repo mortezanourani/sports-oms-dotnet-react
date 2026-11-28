@@ -12,6 +12,13 @@ export function useJobPostAssignments(params) {
   });
 }
 
+export function useJobPostAssignmentPosts() {
+  return useQuery({
+    queryKey: ['jobPosts', 'assignment-options'],
+    queryFn: api.getJobPostAssignmentPosts,
+  });
+}
+
 export function useCreateJobPost() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -48,6 +55,14 @@ export function useEndJobPostAssignment() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: api.endJobPostAssignment,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobPosts', 'assignments'] }),
+  });
+}
+
+export function useImportJobPostAssignments() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.importJobPostAssignments,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobPosts', 'assignments'] }),
   });
 }

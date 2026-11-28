@@ -68,6 +68,8 @@ export default function JobPostsPage() {
             jobPostTypeId: jobPost.jobPostTypeId,
             orgUnitId: jobPost.orgUnitId,
             typeCode: jobPost.typeCode,
+            jobPostCode: jobPost.jobPostCode,
+            jobPostUniqueId: jobPost.jobPostUniqueId,
             title: jobPost.title,
             managerType: jobPost.managerType,
             breakOut: jobPost.breakOut === null ? 'null' : String(jobPost.breakOut),
@@ -80,6 +82,8 @@ export default function JobPostsPage() {
             jobPostTypeId: values.jobPostTypeId,
             orgUnitId: values.orgUnitId,
             typeCode: values.typeCode,
+            jobPostCode: values.jobPostCode,
+            jobPostUniqueId: values.jobPostUniqueId,
             title: values.title,
             managerType: values.managerType,
             breakOut: values.breakOut === 'true'
@@ -145,6 +149,8 @@ export default function JobPostsPage() {
             render: (id) => orgUnitTitles[id] || id,
         },
         { title: 'کد نوع پست', dataIndex: 'typeCode', key: 'typeCode' },
+        { title: 'شماره پست', dataIndex: 'jobPostCode', key: 'jobPostCode' },
+        { title: 'شناسه یکتا پست', dataIndex: 'jobPostUniqueId', key: 'jobPostUniqueId' },
         {
             title: 'نوع مدیر حرفه‌ای',
             dataIndex: 'managerType',
@@ -251,6 +257,20 @@ export default function JobPostsPage() {
                         <Input />
                     </Form.Item>
                     <Form.Item
+                        name="jobPostCode"
+                        label="شماره پست"
+                        rules={[{ required: true, whitespace: true, message: 'شماره پست را وارد کنید' }]}
+                    >
+                        <Input />
+                    </Form.Item>
+                    <Form.Item
+                        name="jobPostUniqueId"
+                        label="شناسه یکتا پست"
+                        rules={[{ required: true, whitespace: true, message: 'شناسه یکتا پست را وارد کنید' }]}
+                    >
+                        <Input />
+                    </Form.Item>
+                    <Form.Item
                         name="title"
                         label="عنوان پست"
                         rules={[
@@ -267,7 +287,11 @@ export default function JobPostsPage() {
                     >
                         <Select options={MANAGER_TYPE_OPTIONS} />
                     </Form.Item>
-                    <Form.Item name="breakOut" label="شکسته‌شده">
+                    <Form.Item
+                        name="breakOut"
+                        label="شکسته‌شده"
+                        rules={[{ required: true, message: 'وضعیت شکسته‌شده را انتخاب کنید' }]}
+                    >
                         <Select options={BREAK_OUT_OPTIONS} />
                     </Form.Item>
                 </Form>
@@ -293,7 +317,7 @@ export default function JobPostsPage() {
                 <Space direction="vertical" style={{ width: '100%' }} size="middle">
                     <Text>
                         نوع پست و واحد سازمانی را با عنوان ثبت‌شده وارد کنید. نوع مدیر حرفه‌ای می‌تواند نامشخص،
-                        مدیر پایه، مدیر میانی یا مدیر ارشد باشد؛ مقدار شکسته‌شده می‌تواند true، false یا خالی باشد.
+                        مدیر پایه، مدیر میانی یا مدیر ارشد باشد؛ شکسته‌شده را با بله، خیر یا نامشخص وارد کنید.
                     </Text>
                     <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>
                         دانلود فایل قالب
