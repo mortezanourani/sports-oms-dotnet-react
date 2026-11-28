@@ -13,6 +13,40 @@ namespace Backend.Tests;
 public class JobPostsControllerImportTests
 {
     [Fact]
+    public async Task CreateRequiresAndUniquelyEnforcesJobPostIdentifiers()
+    {
+        await using var context = CreateContext();
+        var type = new JobPostType { Id = Guid.NewGuid(), Title = "اداری" };
+        var orgUnit = new OrgUnit
+        {
+            Id = Guid.NewGuid(),
+            Title = "واحد مرکزی",
+            Type = OrgUnitType.Administration,
+            Scope = OrgUnitScope.Provincial
+        };
+        context.AddRange(type, orgUnit);
+        await context.SaveChangesAsync();
+        var controller = new JobPostsController(context);
+
+        var missingIdentifier = await controller.Create(
+            new JobPostUpsertDto(type.Id, orgUnit.Id, "نوع", "", "شناسه-۱", "عنوان", "Unspecified", null));
+        Assert.IsType<BadRequestObjectResult>(missingIdentifier);
+
+        var created = await controller.Create(
+            new JobPostUpsertDto(type.Id, orgUnit.Id, "نوع", "شماره-۱", "شناسه-۱", "عنوان اول", "Unspecified", null));
+        Assert.IsType<CreatedAtActionResult>(created);
+
+        var duplicateCode = await controller.Create(
+            new JobPostUpsertDto(type.Id, orgUnit.Id, "نوع", "شماره-۱", "شناسه-۲", "عنوان دوم", "Unspecified", null));
+        var duplicateUniqueId = await controller.Create(
+            new JobPostUpsertDto(type.Id, orgUnit.Id, "نوع", "شماره-۲", "شناسه-۱", "عنوان سوم", "Unspecified", null));
+
+        Assert.IsType<ConflictObjectResult>(duplicateCode);
+        Assert.IsType<ConflictObjectResult>(duplicateUniqueId);
+        Assert.Single(await context.JobPosts.ToListAsync());
+    }
+
+    [Fact]
     public async Task ImportResolvesReferencesAndHandlesDuplicateTitlesAndNullableBreakOut()
     {
         await using var context = CreateContext();
@@ -31,10 +65,12 @@ public class JobPostsControllerImportTests
         using (var workbook = new XLWorkbook())
         {
             var worksheet = CreateWorksheet(workbook);
-            AddRow(worksheet, 2, "اداری", "واحد مرکزی", "001", "کارشناس اول", "مدیر پایه", "true");
-            AddRow(worksheet, 3, "اداری", "واحد مرکزی", "001", "کارشناس دوم", "مدیر ارشد", "");
-            AddRow(worksheet, 4, "اداری", "واحد مرکزی", "002", "کارشناس اول", "نامشخص", "false");
-            AddRow(worksheet, 5, "اداری", "واحد ناموجود", "003", "مدیر", "مدیر میانی", "true");
+            AddRow(worksheet, 2, "اداری", "واحد مرکزی", "001", "شماره-۱", "شناسه-۱", "کارشناس اول", "مدیر پایه", "بله");
+            AddRow(worksheet, 3, "اداری", "واحد مرکزی", "001", "شماره-۲", "شناسه-۲", "کارشناس دوم", "مدیر ارشد", "نامشخص");
+            AddRow(worksheet, 4, "اداری", "واحد مرکزی", "002", "شماره-۳", "شناسه-۳", "کارشناس سوم", "نامشخص", "خیر");
+            AddRow(worksheet, 5, "اداری", "واحد مرکزی", "003", "شماره-۴", "شناسه-۴", "کارشناس اول", "نامشخص", "بله");
+            AddRow(worksheet, 6, "اداری", "واحد ناموجود", "004", "شماره-۵", "شناسه-۵", "مدیر", "مدیر میانی", "بله");
+            AddRow(worksheet, 7, "اداری", "واحد مرکزی", "005", "شماره-۱", "شناسه-۶", "کارشناس چهارم", "نامشخص", "خیر");
             workbook.SaveAs(workbookStream);
         }
 
@@ -46,21 +82,24 @@ public class JobPostsControllerImportTests
         var importResult = Assert.IsType<JobPostImportResultDto>(result.Value);
         var posts = await context.JobPosts.OrderBy(post => post.Title).ToListAsync();
 
-        Assert.Equal(2, importResult.Created);
+        Assert.Equal(3, importResult.Created);
         Assert.Equal(1, importResult.SkippedExisting);
-        Assert.Equal(1, importResult.Failed);
-        Assert.Equal(5, Assert.Single(importResult.Errors).RowNumber);
-        Assert.Equal(2, posts.Count);
+        Assert.Equal(2, importResult.Failed);
+        Assert.Equal(new[] { 6, 7 }, importResult.Errors.Select(error => error.RowNumber));
+        Assert.Equal(3, posts.Count);
         Assert.All(posts, post =>
         {
             Assert.Equal(postType.Id, post.JobPostTypeId);
             Assert.Equal(orgUnit.Id, post.OrgUnitId);
-            Assert.Equal("001", post.TypeCode);
         });
+        Assert.Equal(new[] { "001", "001", "002" }, posts.Select(post => post.TypeCode));
         Assert.Equal(JobPostManagerType.BasicManager, posts[0].ManagerType);
         Assert.True(posts[0].BreakOut);
         Assert.Equal(JobPostManagerType.SeniorManager, posts[1].ManagerType);
         Assert.Null(posts[1].BreakOut);
+        Assert.False(posts[2].BreakOut);
+        Assert.Equal(new[] { "شناسه-۱", "شناسه-۲", "شناسه-۳" }, posts.Select(post => post.JobPostUniqueId));
+        Assert.Equal(new[] { "شماره-۱", "شماره-۲", "شماره-۳" }, posts.Select(post => post.JobPostCode));
     }
 
     [Fact]
@@ -81,7 +120,7 @@ public class JobPostsControllerImportTests
         using (var workbook = new XLWorkbook())
         {
             var worksheet = CreateWorksheet(workbook);
-            AddRow(worksheet, 2, "اداری", "واحد مرکزی", "001", "عنوان", "Unspecified", "sometimes");
+            AddRow(worksheet, 2, "اداری", "واحد مرکزی", "001", "شماره", "شناسه", "عنوان", "Unspecified", "sometimes");
             workbook.SaveAs(workbookStream);
         }
 
@@ -103,9 +142,11 @@ public class JobPostsControllerImportTests
         worksheet.Cell(1, 1).Value = "نوع پست";
         worksheet.Cell(1, 2).Value = "واحد سازمانی";
         worksheet.Cell(1, 3).Value = "کد نوع پست";
-        worksheet.Cell(1, 4).Value = "عنوان پست";
-        worksheet.Cell(1, 5).Value = "نوع مدیر حرفه‌ای";
-        worksheet.Cell(1, 6).Value = "شکسته‌شده";
+        worksheet.Cell(1, 4).Value = "شماره پست";
+        worksheet.Cell(1, 5).Value = "شناسه یکتا پست";
+        worksheet.Cell(1, 6).Value = "عنوان پست";
+        worksheet.Cell(1, 7).Value = "نوع مدیر حرفه‌ای";
+        worksheet.Cell(1, 8).Value = "شکسته‌شده";
         return worksheet;
     }
 
@@ -115,6 +156,8 @@ public class JobPostsControllerImportTests
         string jobPostType,
         string orgUnit,
         string typeCode,
+        string jobPostCode,
+        string jobPostUniqueId,
         string title,
         string managerType,
         string breakOut)
@@ -122,9 +165,11 @@ public class JobPostsControllerImportTests
         worksheet.Cell(row, 1).Value = jobPostType;
         worksheet.Cell(row, 2).Value = orgUnit;
         worksheet.Cell(row, 3).Value = typeCode;
-        worksheet.Cell(row, 4).Value = title;
-        worksheet.Cell(row, 5).Value = managerType;
-        worksheet.Cell(row, 6).Value = breakOut;
+        worksheet.Cell(row, 4).Value = jobPostCode;
+        worksheet.Cell(row, 5).Value = jobPostUniqueId;
+        worksheet.Cell(row, 6).Value = title;
+        worksheet.Cell(row, 7).Value = managerType;
+        worksheet.Cell(row, 8).Value = breakOut;
     }
 
     private static ApplicationDbContext CreateContext()

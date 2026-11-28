@@ -28,6 +28,8 @@ namespace Backend.Controllers
                     post.JobPostTypeId,
                     post.OrgUnitId,
                     post.TypeCode,
+                    post.JobPostCode,
+                    post.JobPostUniqueId,
                     post.Title,
                     post.ManagerType.ToString(),
                     post.BreakOut))
@@ -47,7 +49,9 @@ namespace Backend.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Create(JobPostUpsertDto dto)
         {
-            if (!TryParseJobPost(dto, out var typeCode, out var title, out var managerType, out var error))
+            if (!TryParseJobPost(
+                    dto, out var typeCode, out var jobPostCode, out var jobPostUniqueId,
+                    out var title, out var managerType, out var error))
                 return BadRequest(new { detail = error });
 
             if (!await ReferencesExistAsync(dto.JobPostTypeId, dto.OrgUnitId))
@@ -55,6 +59,10 @@ namespace Backend.Controllers
 
             if (await _db.JobPosts.AnyAsync(post => post.Title == title))
                 return Conflict(new { detail = "این عنوان پست قبلا ثبت شده است" });
+            if (await _db.JobPosts.AnyAsync(post => post.JobPostCode == jobPostCode))
+                return Conflict(new { detail = "شماره پست قبلا ثبت شده است" });
+            if (await _db.JobPosts.AnyAsync(post => post.JobPostUniqueId == jobPostUniqueId))
+                return Conflict(new { detail = "شناسه یکتا پست قبلا ثبت شده است" });
 
             var post = new JobPost
             {
@@ -62,6 +70,8 @@ namespace Backend.Controllers
                 JobPostTypeId = dto.JobPostTypeId,
                 OrgUnitId = dto.OrgUnitId,
                 TypeCode = typeCode,
+                JobPostCode = jobPostCode,
+                JobPostUniqueId = jobPostUniqueId,
                 Title = title,
                 ManagerType = managerType,
                 BreakOut = dto.BreakOut
@@ -79,7 +89,9 @@ namespace Backend.Controllers
             var post = await _db.JobPosts.FindAsync(id);
             if (post == null) return NotFound(new { detail = "پست شغلی یافت نشد" });
 
-            if (!TryParseJobPost(dto, out var typeCode, out var title, out var managerType, out var error))
+            if (!TryParseJobPost(
+                    dto, out var typeCode, out var jobPostCode, out var jobPostUniqueId,
+                    out var title, out var managerType, out var error))
                 return BadRequest(new { detail = error });
 
             if (!await ReferencesExistAsync(dto.JobPostTypeId, dto.OrgUnitId))
@@ -87,10 +99,18 @@ namespace Backend.Controllers
 
             if (await _db.JobPosts.AnyAsync(candidate => candidate.Id != id && candidate.Title == title))
                 return Conflict(new { detail = "این عنوان پست قبلا ثبت شده است" });
+            if (await _db.JobPosts.AnyAsync(candidate =>
+                    candidate.Id != id && candidate.JobPostCode == jobPostCode))
+                return Conflict(new { detail = "شماره پست قبلا ثبت شده است" });
+            if (await _db.JobPosts.AnyAsync(candidate =>
+                    candidate.Id != id && candidate.JobPostUniqueId == jobPostUniqueId))
+                return Conflict(new { detail = "شناسه یکتا پست قبلا ثبت شده است" });
 
             post.JobPostTypeId = dto.JobPostTypeId;
             post.OrgUnitId = dto.OrgUnitId;
             post.TypeCode = typeCode;
+            post.JobPostCode = jobPostCode;
+            post.JobPostUniqueId = jobPostUniqueId;
             post.Title = title;
             post.ManagerType = managerType;
             post.BreakOut = dto.BreakOut;
@@ -149,6 +169,12 @@ namespace Backend.Controllers
             var knownTitles = new HashSet<string>(
                 await _db.JobPosts.Select(post => post.Title).ToListAsync(),
                 StringComparer.Ordinal);
+            var knownJobPostCodes = new HashSet<string>(
+                await _db.JobPosts.Select(post => post.JobPostCode).ToListAsync(),
+                StringComparer.Ordinal);
+            var knownJobPostUniqueIds = new HashSet<string>(
+                await _db.JobPosts.Select(post => post.JobPostUniqueId).ToListAsync(),
+                StringComparer.Ordinal);
             var errors = new List<JobPostImportErrorDto>();
             var created = 0;
             var skippedExisting = 0;
@@ -157,6 +183,8 @@ namespace Backend.Controllers
             {
                 var title = row.Title?.Trim() ?? string.Empty;
                 var typeCode = row.TypeCode?.Trim() ?? string.Empty;
+                var jobPostCode = row.JobPostCode?.Trim() ?? string.Empty;
+                var jobPostUniqueId = row.JobPostUniqueId?.Trim() ?? string.Empty;
                 if (title.Length is 0 or > 160)
                 {
                     errors.Add(new JobPostImportErrorDto(
@@ -167,6 +195,16 @@ namespace Backend.Controllers
                 if (typeCode.Length == 0)
                 {
                     errors.Add(new JobPostImportErrorDto(row.RowNumber, "کد نوع پست الزامی است."));
+                    continue;
+                }
+                if (jobPostCode.Length == 0)
+                {
+                    errors.Add(new JobPostImportErrorDto(row.RowNumber, "شماره پست الزامی است."));
+                    continue;
+                }
+                if (jobPostUniqueId.Length == 0)
+                {
+                    errors.Add(new JobPostImportErrorDto(row.RowNumber, "شناسه یکتا پست الزامی است."));
                     continue;
                 }
                 if (!jobPostTypes.TryGetValue(row.JobPostTypeTitle?.Trim() ?? string.Empty, out var jobPostTypeId))
@@ -188,21 +226,36 @@ namespace Backend.Controllers
                 {
                     errors.Add(new JobPostImportErrorDto(
                         row.RowNumber,
-                        "مقدار شکسته‌شده باید true، false یا خالی باشد."));
+                        "شکسته‌شده باید یکی از مقادیر بله، خیر یا نامشخص باشد."));
                     continue;
                 }
-                if (!knownTitles.Add(title))
+                if (knownTitles.Contains(title))
                 {
                     skippedExisting++;
                     continue;
                 }
+                if (knownJobPostCodes.Contains(jobPostCode))
+                {
+                    errors.Add(new JobPostImportErrorDto(row.RowNumber, "شماره پست تکراری است."));
+                    continue;
+                }
+                if (knownJobPostUniqueIds.Contains(jobPostUniqueId))
+                {
+                    errors.Add(new JobPostImportErrorDto(row.RowNumber, "شناسه یکتا پست تکراری است."));
+                    continue;
+                }
 
+                knownTitles.Add(title);
+                knownJobPostCodes.Add(jobPostCode);
+                knownJobPostUniqueIds.Add(jobPostUniqueId);
                 _db.JobPosts.Add(new JobPost
                 {
                     Id = Guid.NewGuid(),
                     JobPostTypeId = jobPostTypeId,
                     OrgUnitId = orgUnitId,
                     TypeCode = typeCode,
+                    JobPostCode = jobPostCode,
+                    JobPostUniqueId = jobPostUniqueId,
                     Title = title,
                     ManagerType = managerType,
                     BreakOut = breakOut
@@ -221,17 +274,21 @@ namespace Backend.Controllers
         private static bool TryParseJobPost(
             JobPostUpsertDto dto,
             out string typeCode,
+            out string jobPostCode,
+            out string jobPostUniqueId,
             out string title,
             out JobPostManagerType managerType,
             out string error)
         {
             typeCode = dto.TypeCode?.Trim() ?? string.Empty;
+            jobPostCode = dto.JobPostCode?.Trim() ?? string.Empty;
+            jobPostUniqueId = dto.JobPostUniqueId?.Trim() ?? string.Empty;
             title = dto.Title?.Trim() ?? string.Empty;
 
-            if (typeCode.Length == 0)
+            if (typeCode.Length == 0 || jobPostCode.Length == 0 || jobPostUniqueId.Length == 0)
             {
                 managerType = default;
-                error = "کد نوع پست الزامی است";
+                error = "کد نوع پست، شماره پست و شناسه یکتا پست الزامی هستند";
                 return false;
             }
 
@@ -279,8 +336,7 @@ namespace Backend.Controllers
         private static bool TryParseBreakOut(string? value, out bool? breakOut)
         {
             var normalizedValue = value?.Trim();
-            if (string.IsNullOrEmpty(normalizedValue) ||
-                string.Equals(normalizedValue, "null", StringComparison.OrdinalIgnoreCase) ||
+            if (string.Equals(normalizedValue, "null", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(normalizedValue, "نامشخص", StringComparison.Ordinal))
             {
                 breakOut = null;
@@ -311,6 +367,8 @@ namespace Backend.Controllers
                 post.JobPostTypeId,
                 post.OrgUnitId,
                 post.TypeCode,
+                post.JobPostCode,
+                post.JobPostUniqueId,
                 post.Title,
                 post.ManagerType.ToString(),
                 post.BreakOut);

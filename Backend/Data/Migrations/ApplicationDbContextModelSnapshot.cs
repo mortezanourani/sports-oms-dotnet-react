@@ -519,9 +519,19 @@ namespace Backend.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("break_out");
 
+                    b.Property<string>("JobPostCode")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("job_post_code");
+
                     b.Property<Guid>("JobPostTypeId")
                         .HasColumnType("uuid")
                         .HasColumnName("job_post_type_id");
+
+                    b.Property<string>("JobPostUniqueId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("job_post_unique_id");
 
                     b.Property<string>("ManagerType")
                         .IsRequired()
@@ -545,8 +555,16 @@ namespace Backend.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_job_posts");
 
+                    b.HasIndex("JobPostCode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_job_posts_job_post_code");
+
                     b.HasIndex("JobPostTypeId")
                         .HasDatabaseName("ix_job_posts_job_post_type_id");
+
+                    b.HasIndex("JobPostUniqueId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_job_posts_job_post_unique_id");
 
                     b.HasIndex("OrgUnitId")
                         .HasDatabaseName("ix_job_posts_org_unit_id");
@@ -556,6 +574,49 @@ namespace Backend.Data.Migrations
                         .HasDatabaseName("ix_job_posts_title");
 
                     b.ToTable("job_posts", (string)null);
+                });
+
+            modelBuilder.Entity("Backend.Models.JobPostAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("end_date");
+
+                    b.Property<Guid>("JobPostId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_post_id");
+
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_job_post_assignments");
+
+                    b.HasIndex("JobPostId", "StartDate", "EndDate")
+                        .HasDatabaseName("ix_job_post_assignments_job_post_id_start_date_end_date");
+
+                    b.HasIndex("UserId", "StartDate", "EndDate")
+                        .HasDatabaseName("ix_job_post_assignments_user_id_start_date_end_date");
+
+                    b.ToTable("job_post_assignments", (string)null);
                 });
 
             modelBuilder.Entity("Backend.Models.JobPostType", b =>
@@ -1240,6 +1301,27 @@ namespace Backend.Data.Migrations
                     b.Navigation("JobPostType");
 
                     b.Navigation("OrgUnit");
+                });
+
+            modelBuilder.Entity("Backend.Models.JobPostAssignment", b =>
+                {
+                    b.HasOne("Backend.Models.JobPost", "JobPost")
+                        .WithMany()
+                        .HasForeignKey("JobPostId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_job_post_assignments_job_posts_job_post_id");
+
+                    b.HasOne("Backend.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_job_post_assignments_users_user_id");
+
+                    b.Navigation("JobPost");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Backend.Models.Medal", b =>

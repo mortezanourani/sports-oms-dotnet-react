@@ -27,6 +27,7 @@ namespace Backend.Data
         public DbSet<JobPost> JobPosts => Set<JobPost>();
         public DbSet<JobPostType> JobPostTypes => Set<JobPostType>();
         public DbSet<OrgUnit> OrgUnits => Set<OrgUnit>();
+        public DbSet<JobPostAssignment> JobPostAssignments => Set<JobPostAssignment>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -189,6 +190,14 @@ namespace Backend.Data
                 .HasIndex(post => post.Title)
                 .IsUnique();
 
+            builder.Entity<JobPost>()
+                .HasIndex(post => post.JobPostCode)
+                .IsUnique();
+
+            builder.Entity<JobPost>()
+                .HasIndex(post => post.JobPostUniqueId)
+                .IsUnique();
+
             builder.Entity<JobPostType>()
                 .HasIndex(type => type.Title)
                 .IsUnique();
@@ -204,6 +213,24 @@ namespace Backend.Data
                 .WithMany()
                 .HasForeignKey(post => post.OrgUnitId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<JobPostAssignment>()
+                .HasOne(assignment => assignment.User)
+                .WithMany()
+                .HasForeignKey(assignment => assignment.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<JobPostAssignment>()
+                .HasOne(assignment => assignment.JobPost)
+                .WithMany()
+                .HasForeignKey(assignment => assignment.JobPostId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<JobPostAssignment>()
+                .HasIndex(assignment => new { assignment.UserId, assignment.StartDate, assignment.EndDate });
+
+            builder.Entity<JobPostAssignment>()
+                .HasIndex(assignment => new { assignment.JobPostId, assignment.StartDate, assignment.EndDate });
         }
     }
 }

@@ -25,6 +25,8 @@ namespace Backend.Models
         public OrgUnit OrgUnit { get; set; } = null!;
 
         public string TypeCode { get; set; } = string.Empty;
+        public string JobPostCode { get; set; } = string.Empty;
+        public string JobPostUniqueId { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public JobPostManagerType ManagerType { get; set; }
         public bool? BreakOut { get; set; }

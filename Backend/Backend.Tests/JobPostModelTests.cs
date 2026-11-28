@@ -23,6 +23,8 @@ public class JobPostModelTests
         var indexes = entity.GetIndexes();
 
         Assert.False(entity.FindProperty(nameof(JobPost.TypeCode))!.IsNullable);
+        Assert.False(entity.FindProperty(nameof(JobPost.JobPostCode))!.IsNullable);
+        Assert.False(entity.FindProperty(nameof(JobPost.JobPostUniqueId))!.IsNullable);
         Assert.False(entity.FindProperty(nameof(JobPost.Title))!.IsNullable);
         Assert.False(entity.FindProperty(nameof(JobPost.ManagerType))!.IsNullable);
         Assert.True(entity.FindProperty(nameof(JobPost.BreakOut))!.IsNullable);
@@ -33,6 +35,10 @@ public class JobPostModelTests
             Assert.Equal(DeleteBehavior.Restrict, relationship.DeleteBehavior));
         Assert.Contains(indexes, index =>
             index.IsUnique && index.Properties.Single().Name == nameof(JobPost.Title));
+        Assert.Contains(indexes, index =>
+            index.IsUnique && index.Properties.Single().Name == nameof(JobPost.JobPostCode));
+        Assert.Contains(indexes, index =>
+            index.IsUnique && index.Properties.Single().Name == nameof(JobPost.JobPostUniqueId));
         Assert.DoesNotContain(indexes, index =>
             index.IsUnique && index.Properties.Single().Name == nameof(JobPost.TypeCode));
     }

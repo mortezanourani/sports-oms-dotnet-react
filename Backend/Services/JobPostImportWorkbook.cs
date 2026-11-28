@@ -7,6 +7,8 @@ public sealed record JobPostImportRow(
     string? JobPostTypeTitle,
     string? OrgUnitTitle,
     string? TypeCode,
+    string? JobPostCode,
+    string? JobPostUniqueId,
     string? Title,
     string? ManagerType,
     string? BreakOut);
@@ -21,6 +23,8 @@ public static class JobPostImportWorkbook
         "نوع پست",
         "واحد سازمانی",
         "کد نوع پست",
+        "شماره پست",
+        "شناسه یکتا پست",
         "عنوان پست",
         "نوع مدیر حرفه‌ای",
         "شکسته‌شده"
@@ -36,6 +40,11 @@ public static class JobPostImportWorkbook
         worksheet.Row(1).Style.Font.Bold = true;
         worksheet.SheetView.FreezeRows(1);
         worksheet.Columns(1, Headers.Length).AdjustToContents();
+        var breakOutValidation = worksheet.Range(2, 8, 1000, 8).CreateDataValidation();
+        breakOutValidation.List("\"بله,خیر,نامشخص\"");
+        breakOutValidation.ErrorTitle = "مقدار نامعتبر";
+        breakOutValidation.ErrorMessage = "یکی از گزینه‌های بله، خیر یا نامشخص را انتخاب کنید.";
+        breakOutValidation.ShowErrorMessage = true;
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
@@ -83,7 +92,9 @@ public static class JobPostImportWorkbook
                 ReadCell(Headers[2]),
                 ReadCell(Headers[3]),
                 ReadCell(Headers[4]),
-                ReadCell(Headers[5])));
+                ReadCell(Headers[5]),
+                ReadCell(Headers[6]),
+                ReadCell(Headers[7])));
         }
 
         return rows;

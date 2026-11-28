@@ -4,6 +4,8 @@ namespace Backend.DTOs
         Guid JobPostTypeId,
         Guid OrgUnitId,
         string TypeCode,
+        string JobPostCode,
+        string JobPostUniqueId,
         string Title,
         string ManagerType,
         bool? BreakOut
@@ -14,6 +16,8 @@ namespace Backend.DTOs
         Guid JobPostTypeId,
         Guid OrgUnitId,
         string TypeCode,
+        string JobPostCode,
+        string JobPostUniqueId,
         string Title,
         string ManagerType,
         bool? BreakOut
