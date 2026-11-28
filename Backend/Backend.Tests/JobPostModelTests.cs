@@ -34,7 +34,7 @@ public class JobPostModelTests
         Assert.All(relationships.Values, relationship =>
             Assert.Equal(DeleteBehavior.Restrict, relationship.DeleteBehavior));
         Assert.Contains(indexes, index =>
-            index.IsUnique && index.Properties.Single().Name == nameof(JobPost.Title));
+            !index.IsUnique && index.Properties.Single().Name == nameof(JobPost.Title));
         Assert.Contains(indexes, index =>
             index.IsUnique && index.Properties.Single().Name == nameof(JobPost.JobPostCode));
         Assert.Contains(indexes, index =>

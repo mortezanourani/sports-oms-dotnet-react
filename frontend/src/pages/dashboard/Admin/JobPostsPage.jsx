@@ -354,7 +354,6 @@ export default function JobPostsPage() {
                 {importResult && (
                     <>
                         <p>ایجادشده: {importResult.created}</p>
-                        <p>ردشده به دلیل تکراری بودن عنوان: {importResult.skippedExisting}</p>
                         <p>ناموفق: {importResult.failed}</p>
                         {importResult.errors.length > 0 && (
                             <List

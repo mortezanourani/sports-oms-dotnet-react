@@ -13,7 +13,7 @@ namespace Backend.Tests;
 public class JobPostsControllerImportTests
 {
     [Fact]
-    public async Task CreateRequiresAndUniquelyEnforcesJobPostIdentifiers()
+    public async Task CreateAllowsDuplicateTitlesAndUniquelyEnforcesJobPostIdentifiers()
     {
         await using var context = CreateContext();
         var type = new JobPostType { Id = Guid.NewGuid(), Title = "اداری" };
@@ -34,20 +34,23 @@ public class JobPostsControllerImportTests
 
         var created = await controller.Create(
             new JobPostUpsertDto(type.Id, orgUnit.Id, "نوع", "شماره-۱", "شناسه-۱", "عنوان اول", "Unspecified", null));
-        Assert.IsType<CreatedAtActionResult>(created);
+        var duplicateTitle = await controller.Create(
+            new JobPostUpsertDto(type.Id, orgUnit.Id, "نوع", "شماره-۲", "شناسه-۲", "عنوان اول", "Unspecified", null));
 
         var duplicateCode = await controller.Create(
-            new JobPostUpsertDto(type.Id, orgUnit.Id, "نوع", "شماره-۱", "شناسه-۲", "عنوان دوم", "Unspecified", null));
+            new JobPostUpsertDto(type.Id, orgUnit.Id, "نوع", "شماره-۱", "شناسه-۳", "عنوان دوم", "Unspecified", null));
         var duplicateUniqueId = await controller.Create(
-            new JobPostUpsertDto(type.Id, orgUnit.Id, "نوع", "شماره-۲", "شناسه-۱", "عنوان سوم", "Unspecified", null));
+            new JobPostUpsertDto(type.Id, orgUnit.Id, "نوع", "شماره-۳", "شناسه-۱", "عنوان سوم", "Unspecified", null));
 
+        Assert.IsType<CreatedAtActionResult>(created);
+        Assert.IsType<CreatedAtActionResult>(duplicateTitle);
         Assert.IsType<ConflictObjectResult>(duplicateCode);
         Assert.IsType<ConflictObjectResult>(duplicateUniqueId);
-        Assert.Single(await context.JobPosts.ToListAsync());
+        Assert.Equal(2, await context.JobPosts.CountAsync());
     }
 
     [Fact]
-    public async Task ImportResolvesReferencesAndHandlesDuplicateTitlesAndNullableBreakOut()
+    public async Task ImportAllowsDuplicateTitlesAndRejectsDuplicateIdentifiers()
     {
         await using var context = CreateContext();
         var postType = new JobPostType { Id = Guid.NewGuid(), Title = "اداری" };
@@ -60,17 +63,30 @@ public class JobPostsControllerImportTests
         };
         context.AddRange(postType, orgUnit);
         await context.SaveChangesAsync();
+        context.JobPosts.Add(new JobPost
+        {
+            Id = Guid.NewGuid(),
+            JobPostTypeId = postType.Id,
+            OrgUnitId = orgUnit.Id,
+            TypeCode = "موجود",
+            JobPostCode = "شماره-موجود",
+            JobPostUniqueId = "شناسه-موجود",
+            Title = "کارشناس اول",
+            ManagerType = JobPostManagerType.Unspecified
+        });
+        await context.SaveChangesAsync();
 
         using var workbookStream = new MemoryStream();
         using (var workbook = new XLWorkbook())
         {
             var worksheet = CreateWorksheet(workbook);
             AddRow(worksheet, 2, "اداری", "واحد مرکزی", "001", "شماره-۱", "شناسه-۱", "کارشناس اول", "مدیر پایه", "بله");
-            AddRow(worksheet, 3, "اداری", "واحد مرکزی", "001", "شماره-۲", "شناسه-۲", "کارشناس دوم", "مدیر ارشد", "نامشخص");
-            AddRow(worksheet, 4, "اداری", "واحد مرکزی", "002", "شماره-۳", "شناسه-۳", "کارشناس سوم", "نامشخص", "خیر");
+            AddRow(worksheet, 3, "اداری", "واحد مرکزی", "001", "شماره-۲", "شناسه-۲", "کارشناس اول", "مدیر ارشد", "نامشخص");
+            AddRow(worksheet, 4, "اداری", "واحد مرکزی", "002", "شماره-۳", "شناسه-۳", "کارشناس اول", "نامشخص", "خیر");
             AddRow(worksheet, 5, "اداری", "واحد مرکزی", "003", "شماره-۴", "شناسه-۴", "کارشناس اول", "نامشخص", "بله");
             AddRow(worksheet, 6, "اداری", "واحد ناموجود", "004", "شماره-۵", "شناسه-۵", "مدیر", "مدیر میانی", "بله");
             AddRow(worksheet, 7, "اداری", "واحد مرکزی", "005", "شماره-۱", "شناسه-۶", "کارشناس چهارم", "نامشخص", "خیر");
+            AddRow(worksheet, 8, "اداری", "واحد مرکزی", "006", "شماره-۶", "شناسه-۱", "کارشناس پنجم", "نامشخص", "خیر");
             workbook.SaveAs(workbookStream);
         }
 
@@ -80,26 +96,31 @@ public class JobPostsControllerImportTests
         var result = Assert.IsType<OkObjectResult>(
             await new JobPostsController(context).Import(file));
         var importResult = Assert.IsType<JobPostImportResultDto>(result.Value);
-        var posts = await context.JobPosts.OrderBy(post => post.Title).ToListAsync();
+        var posts = await context.JobPosts.ToListAsync();
+        var importedPosts = posts
+            .Where(post => post.JobPostUniqueId != "شناسه-موجود")
+            .OrderBy(post => post.JobPostUniqueId)
+            .ToList();
 
-        Assert.Equal(3, importResult.Created);
-        Assert.Equal(1, importResult.SkippedExisting);
-        Assert.Equal(2, importResult.Failed);
-        Assert.Equal(new[] { 6, 7 }, importResult.Errors.Select(error => error.RowNumber));
-        Assert.Equal(3, posts.Count);
-        Assert.All(posts, post =>
+        Assert.Equal(4, importResult.Created);
+        Assert.Equal(0, importResult.SkippedExisting);
+        Assert.Equal(3, importResult.Failed);
+        Assert.Equal(new[] { 6, 7, 8 }, importResult.Errors.Select(error => error.RowNumber));
+        Assert.Equal(5, posts.Count);
+        Assert.Equal(5, posts.Count(post => post.Title == "کارشناس اول"));
+        Assert.All(importedPosts, post =>
         {
             Assert.Equal(postType.Id, post.JobPostTypeId);
             Assert.Equal(orgUnit.Id, post.OrgUnitId);
         });
-        Assert.Equal(new[] { "001", "001", "002" }, posts.Select(post => post.TypeCode));
-        Assert.Equal(JobPostManagerType.BasicManager, posts[0].ManagerType);
-        Assert.True(posts[0].BreakOut);
-        Assert.Equal(JobPostManagerType.SeniorManager, posts[1].ManagerType);
-        Assert.Null(posts[1].BreakOut);
-        Assert.False(posts[2].BreakOut);
-        Assert.Equal(new[] { "شناسه-۱", "شناسه-۲", "شناسه-۳" }, posts.Select(post => post.JobPostUniqueId));
-        Assert.Equal(new[] { "شماره-۱", "شماره-۲", "شماره-۳" }, posts.Select(post => post.JobPostCode));
+        Assert.Equal(new[] { "001", "001", "002", "003" }, importedPosts.Select(post => post.TypeCode));
+        Assert.Equal(JobPostManagerType.BasicManager, importedPosts[0].ManagerType);
+        Assert.True(importedPosts[0].BreakOut);
+        Assert.Equal(JobPostManagerType.SeniorManager, importedPosts[1].ManagerType);
+        Assert.Null(importedPosts[1].BreakOut);
+        Assert.False(importedPosts[2].BreakOut);
+        Assert.Equal(new[] { "شناسه-۱", "شناسه-۲", "شناسه-۳", "شناسه-۴" }, importedPosts.Select(post => post.JobPostUniqueId));
+        Assert.Equal(new[] { "شماره-۱", "شماره-۲", "شماره-۳", "شماره-۴" }, importedPosts.Select(post => post.JobPostCode));
     }
 
     [Fact]

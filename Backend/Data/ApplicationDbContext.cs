@@ -187,8 +187,7 @@ namespace Backend.Data
                 .HasFilter("\"ended_at_utc\" IS NULL");
 
             builder.Entity<JobPost>()
-                .HasIndex(post => post.Title)
-                .IsUnique();
+                .HasIndex(post => post.Title);
 
             builder.Entity<JobPost>()
                 .HasIndex(post => post.JobPostCode)

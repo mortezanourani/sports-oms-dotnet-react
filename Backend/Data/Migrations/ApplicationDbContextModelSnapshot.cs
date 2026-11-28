@@ -570,7 +570,6 @@ namespace Backend.Data.Migrations
                         .HasDatabaseName("ix_job_posts_org_unit_id");
 
                     b.HasIndex("Title")
-                        .IsUnique()
                         .HasDatabaseName("ix_job_posts_title");
 
                     b.ToTable("job_posts", (string)null);

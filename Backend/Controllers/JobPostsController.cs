@@ -57,8 +57,6 @@ namespace Backend.Controllers
             if (!await ReferencesExistAsync(dto.JobPostTypeId, dto.OrgUnitId))
                 return BadRequest(new { detail = "نوع پست یا واحد سازمانی انتخاب‌شده معتبر نیست" });
 
-            if (await _db.JobPosts.AnyAsync(post => post.Title == title))
-                return Conflict(new { detail = "این عنوان پست قبلا ثبت شده است" });
             if (await _db.JobPosts.AnyAsync(post => post.JobPostCode == jobPostCode))
                 return Conflict(new { detail = "شماره پست قبلا ثبت شده است" });
             if (await _db.JobPosts.AnyAsync(post => post.JobPostUniqueId == jobPostUniqueId))
@@ -97,8 +95,6 @@ namespace Backend.Controllers
             if (!await ReferencesExistAsync(dto.JobPostTypeId, dto.OrgUnitId))
                 return BadRequest(new { detail = "نوع پست یا واحد سازمانی انتخاب‌شده معتبر نیست" });
 
-            if (await _db.JobPosts.AnyAsync(candidate => candidate.Id != id && candidate.Title == title))
-                return Conflict(new { detail = "این عنوان پست قبلا ثبت شده است" });
             if (await _db.JobPosts.AnyAsync(candidate =>
                     candidate.Id != id && candidate.JobPostCode == jobPostCode))
                 return Conflict(new { detail = "شماره پست قبلا ثبت شده است" });
@@ -166,9 +162,6 @@ namespace Backend.Controllers
             var orgUnits = await _db.OrgUnits
                 .Select(unit => new { unit.Id, unit.Title })
                 .ToDictionaryAsync(unit => unit.Title, unit => unit.Id, StringComparer.Ordinal);
-            var knownTitles = new HashSet<string>(
-                await _db.JobPosts.Select(post => post.Title).ToListAsync(),
-                StringComparer.Ordinal);
             var knownJobPostCodes = new HashSet<string>(
                 await _db.JobPosts.Select(post => post.JobPostCode).ToListAsync(),
                 StringComparer.Ordinal);
@@ -229,11 +222,6 @@ namespace Backend.Controllers
                         "شکسته‌شده باید یکی از مقادیر بله، خیر یا نامشخص باشد."));
                     continue;
                 }
-                if (knownTitles.Contains(title))
-                {
-                    skippedExisting++;
-                    continue;
-                }
                 if (knownJobPostCodes.Contains(jobPostCode))
                 {
                     errors.Add(new JobPostImportErrorDto(row.RowNumber, "شماره پست تکراری است."));
@@ -245,7 +233,6 @@ namespace Backend.Controllers
                     continue;
                 }
 
-                knownTitles.Add(title);
                 knownJobPostCodes.Add(jobPostCode);
                 knownJobPostUniqueIds.Add(jobPostUniqueId);
                 _db.JobPosts.Add(new JobPost
